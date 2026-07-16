@@ -1,0 +1,4 @@
+/* Bootstrap is loaded via angular.json styles. App-wide tweaks go here. */
+body {
+  min-height: 100vh;
+}

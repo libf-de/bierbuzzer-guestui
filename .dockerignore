@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/.angular
+**/out-tsc
+data
+.env
+.git
+*.log
+mosquitto
+scripts
+README.md

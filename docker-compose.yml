@@ -1,0 +1,51 @@
+# Backend for the bierbuzzer drink-button MQTT server.
+# Mosquitto is assumed to already run on the shared `traefik_net` network;
+# this compose only defines the Node backend.
+#
+# Secrets/config come from .env (DEVICE_SECRET, MQTT_SERVER_PASSWORD,
+# MOSQUITTO_ADMIN_PASS, ADMIN_BOOTSTRAP_*). The `environment:` block below
+# pins docker-network values (host names, native ctrl mode) and overrides .env.
+
+services:
+  backend:
+    build: .
+    image: bierbuzzer-backend
+    container_name: bierbuzzer-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "3000"
+      # backend's live MQTT client reaches the broker by service name
+      MQTT_URL: mqtt://mosquitto:1883
+      # mosquitto_ctrl runs inside this container (mosquitto-clients baked in)
+      MOSQUITTO_CTRL_MODE: native
+      MOSQUITTO_BROKER_HOST: mosquitto
+      MOSQUITTO_BROKER_PORT: "1883"
+      # nedb files land on the named volume
+      DB_DEVICES_PATH: /app/data/devices.db
+      DB_ARTICLES_PATH: /app/data/articles.db
+      DB_ADMINS_PATH: /app/data/admins.db
+    volumes:
+      - backend_data:/app/data
+    networks:
+      - traefik_net
+    # --- Production: Traefik HTTP router. Adjust host + certresolver. ---
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bierbuzzer.rule=Host(`buzzer.example.com`)"
+      - "traefik.http.routers.bierbuzzer.entrypoints=websecure"
+      - "traefik.http.routers.bierbuzzer.tls.certresolver=le"
+      - "traefik.http.services.bierbuzzer.loadbalancer.server.port=3000"
+    # --- Local dev without Traefik: expose the port instead. ---
+    # ports:
+    #   - "3000:3000"
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  # Must match the network Mosquitto is on. External = created elsewhere.
+  traefik_net:
+    external: true
+
+volumes:
+  backend_data:
