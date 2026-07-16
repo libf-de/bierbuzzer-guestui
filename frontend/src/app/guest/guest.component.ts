@@ -1,7 +1,13 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
-import { ApiService, AckState, DeviceStatus, GuestPreset, OrderModeName } from '../api.service';
+import {
+  ApiService,
+  AckState,
+  DeviceStatus,
+  GuestPreset,
+  OrderModeName,
+} from '../api.service';
 
 @Component({
   selector: 'app-guest',
@@ -36,7 +42,10 @@ import { ApiService, AckState, DeviceStatus, GuestPreset, OrderModeName } from '
           [disabled]="loading()"
           (click)="pick(p)"
         >
-          <div class="fw-semibold">{{ p.name }}</div>
+          <div class="d-flex justify-content-between align-items-start">
+            <span class="fw-semibold">{{ p.name }}</span>
+            <span class="fw-semibold text-nowrap ms-2" *ngIf="priceLabel(p)">{{ priceLabel(p) }}</span>
+          </div>
           <div class="small text-secondary">
             {{ modeLabel(p.orderMode.mode) }}<span *ngIf="p.articles.length"> · {{ p.articles.length }} Artikel</span>
           </div>
@@ -111,6 +120,21 @@ export class GuestComponent implements OnInit {
       : mode === 'random_article'
         ? 'Zufälliger Artikel'
         : 'Russisches Roulette';
+  }
+
+  /** Total sum for fixed/roulette, min–max span for random article. */
+  priceLabel(p: GuestPreset): string {
+    const pr = p.price;
+    if (!pr) return '';
+    if (pr.total != null) return this.eur(pr.total);
+    if (pr.min != null && pr.max != null) {
+      return pr.min === pr.max ? this.eur(pr.min) : `${this.eur(pr.min)} – ${this.eur(pr.max)}`;
+    }
+    return '';
+  }
+
+  private eur(n: number): string {
+    return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
   }
 
   describe(a: AckState): string {

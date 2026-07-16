@@ -18,6 +18,13 @@ export interface ArticleRef {
 export interface CatalogArticle {
   _id: string;
   name: string;
+  price: number;
+}
+
+export interface PresetPrice {
+  total?: number;
+  min?: number;
+  max?: number;
 }
 
 export interface CatalogCategory {
@@ -66,6 +73,7 @@ export interface GuestPreset {
   name: string;
   orderMode: OrderMode;
   articles: ArticleRef[];
+  price: PresetPrice | null;
 }
 
 export interface GuestDeviceView {
@@ -87,10 +95,16 @@ export interface ProvisionResult {
   credentials: { username: string; password: string };
 }
 
+export interface PresetArticleInput {
+  _id: string;
+  combinedWith: string[];
+  price?: number;
+}
+
 export interface PresetBody {
   name: string;
   orderMode: OrderMode;
-  articles: ArticleRef[];
+  articles: PresetArticleInput[];
 }
 
 @Injectable({ providedIn: 'root' })

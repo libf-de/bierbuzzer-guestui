@@ -51,6 +51,8 @@ const orderModeSchema = z.union([
 const articleRefSchema = z.object({
   _id: z.string().min(1),
   combinedWith: z.array(z.string()).default([]),
+  // Unit price captured from the catalog (display only; not sent to devices).
+  price: z.number().optional(),
 });
 
 // --- admin: preset definition + device assignment ---

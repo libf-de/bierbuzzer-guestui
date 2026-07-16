@@ -17,25 +17,25 @@ export class MockCatalogSource implements CatalogSource {
     {
       name: "Bier",
       articles: [
-        { _id: "664f0000000000000000b001", name: "Pils 0,3l" },
-        { _id: "664f0000000000000000b002", name: "Pils 0,5l" },
-        { _id: "664f0000000000000000b003", name: "Weißbier 0,5l" },
-        { _id: "664f0000000000000000b004", name: "Radler 0,5l" },
+        { _id: "664f0000000000000000b001", name: "Pils 0,3l", price: 3.2 },
+        { _id: "664f0000000000000000b002", name: "Pils 0,5l", price: 4.5 },
+        { _id: "664f0000000000000000b003", name: "Weißbier 0,5l", price: 4.9 },
+        { _id: "664f0000000000000000b004", name: "Radler 0,5l", price: 4.2 },
       ],
     },
     {
       name: "Alkoholfrei",
       articles: [
-        { _id: "664f0000000000000000a001", name: "Cola 0,3l" },
-        { _id: "664f0000000000000000a002", name: "Apfelschorle 0,5l" },
-        { _id: "664f0000000000000000a003", name: "Wasser 0,5l" },
+        { _id: "664f0000000000000000a001", name: "Cola 0,3l", price: 3.0 },
+        { _id: "664f0000000000000000a002", name: "Apfelschorle 0,5l", price: 3.6 },
+        { _id: "664f0000000000000000a003", name: "Wasser 0,5l", price: 2.8 },
       ],
     },
     {
       name: "Spirituosen",
       articles: [
-        { _id: "664f0000000000000000s001", name: "Schnaps 2cl" },
-        { _id: "664f0000000000000000s002", name: "Kräuter 2cl" },
+        { _id: "664f0000000000000000s001", name: "Schnaps 2cl", price: 2.5 },
+        { _id: "664f0000000000000000s002", name: "Kräuter 2cl", price: 2.9 },
       ],
     },
   ];
@@ -52,6 +52,7 @@ const UNCATEGORIZED = "Uncategorized";
 interface CloudArticle {
   _id: string;
   name: string;
+  price?: number;
   isArchived?: boolean;
 }
 interface CloudArticleGroup {
@@ -66,6 +67,7 @@ interface CloudArticleGroupCategory {
 interface CloudArticleGroupArticle {
   articleGroupId: string;
   articleId: string;
+  price?: number;
   categoryId?: string;
   isArchived?: boolean;
 }
@@ -91,14 +93,14 @@ export class CloudCatalogSource implements CatalogSource {
       this.post<CloudArticleGroup>("/getArticleGroups", { apiKey }),
     ]);
 
-    // articleId -> name (skip archived)
-    const articleName = new Map<string, string>();
+    // articleId -> {name, price} (skip archived)
+    const articleInfo = new Map<string, { name: string; price: number }>();
     for (const a of articles) {
-      if (!a.isArchived) articleName.set(a._id, a.name);
+      if (!a.isArchived) articleInfo.set(a._id, { name: a.name, price: a.price ?? 0 });
     }
 
     // categoryName -> (articleId -> article), merged across all groups
-    const byCategory = new Map<string, Map<string, { _id: string; name: string }>>();
+    const byCategory = new Map<string, Map<string, { _id: string; name: string; price: number }>>();
 
     await Promise.all(
       groups.map(async (group) => {
@@ -118,15 +120,20 @@ export class CloudCatalogSource implements CatalogSource {
 
         for (const ga of groupArticles) {
           if (ga.isArchived) continue;
-          const name = articleName.get(ga.articleId);
-          if (!name) continue; // archived / unknown article
+          const info = articleInfo.get(ga.articleId);
+          if (!info) continue; // archived / unknown article
           const catName = (ga.categoryId && categoryName.get(ga.categoryId)) || UNCATEGORIZED;
           let bucket = byCategory.get(catName);
           if (!bucket) {
             bucket = new Map();
             byCategory.set(catName, bucket);
           }
-          bucket.set(ga.articleId, { _id: ga.articleId, name });
+          // group price overrides the base article price
+          bucket.set(ga.articleId, {
+            _id: ga.articleId,
+            name: info.name,
+            price: ga.price ?? info.price,
+          });
         }
       }),
     );

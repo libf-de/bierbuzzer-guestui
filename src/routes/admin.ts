@@ -86,13 +86,15 @@ export function adminRoutes(deps: AdminDeps): Router {
     "/presets",
     asyncHandler(async (req, res) => {
       const input = parseBody(presetSchema, req.body);
-      assertArticlesFit(input.articles);
+      const { articles, articlePrices } = splitArticles(input.articles);
+      assertArticlesFit(articles);
       const preset = await deps.db.createPreset({
         id: randomUUID(),
         accountId: accountId(req),
         name: input.name,
         orderMode: input.orderMode,
-        articles: input.articles,
+        articles,
+        articlePrices,
         createdAt: Date.now(),
       });
       res.status(201).json({ preset });
@@ -105,11 +107,13 @@ export function adminRoutes(deps: AdminDeps): Router {
       const acc = accountId(req);
       await ownedPreset(req.params.id, acc);
       const input = parseBody(presetSchema, req.body);
-      assertArticlesFit(input.articles);
+      const { articles, articlePrices } = splitArticles(input.articles);
+      assertArticlesFit(articles);
       const preset = await deps.db.updatePreset(req.params.id, {
         name: input.name,
         orderMode: input.orderMode,
-        articles: input.articles,
+        articles,
+        articlePrices,
       });
       res.json({ preset });
     }),
@@ -186,4 +190,14 @@ export function adminRoutes(deps: AdminDeps): Router {
 async function ownedDevice(deps: AdminDeps, topicId: string, accountId: string): Promise<void> {
   const device = await deps.db.getDeviceByTopicId(topicId);
   if (!device || device.accountId !== accountId) throw new HttpError(404, "unknown device");
+}
+
+/** Split incoming preset articles into device payload + a price map. */
+function splitArticles(
+  items: Array<{ _id: string; combinedWith: string[]; price?: number }>,
+): { articles: Array<{ _id: string; combinedWith: string[] }>; articlePrices: Record<string, number> } {
+  const articles = items.map((a) => ({ _id: a._id, combinedWith: a.combinedWith }));
+  const articlePrices: Record<string, number> = {};
+  for (const a of items) if (typeof a.price === "number") articlePrices[a._id] = a.price;
+  return { articles, articlePrices };
 }

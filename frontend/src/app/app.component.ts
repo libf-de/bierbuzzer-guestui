@@ -7,17 +7,23 @@ import { ApiService } from './api.service';
   standalone: true,
   imports: [RouterOutlet, RouterLink],
   template: `
-    <nav class="navbar navbar-expand bg-primary" data-bs-theme="dark">
-      <div class="container">
-        <a class="navbar-brand fw-bold" routerLink="/admin">🍺 Bierbuzzer</a>
-        <div class="navbar-nav">
-          <a class="nav-link" routerLink="/admin">Admin</a>
+    <div class="d-flex flex-column min-vh-100">
+      <nav class="navbar navbar-expand bg-primary" data-bs-theme="dark">
+        <div class="container">
+          <a class="navbar-brand fw-bold" routerLink="/admin">🍺 Bierbuzzer</a>
+          <div class="navbar-nav">
+            <a class="nav-link" routerLink="/admin">Admin</a>
+          </div>
         </div>
-      </div>
-    </nav>
-    <main class="container py-4">
-      <router-outlet></router-outlet>
-    </main>
+      </nav>
+      <main class="container py-4 flex-grow-1">
+        <router-outlet></router-outlet>
+      </main>
+      <footer class="mt-auto py-3 text-center text-secondary small border-top">
+        powered by
+        <a href="https://degaso.de" target="_blank" rel="noopener">degaso</a>
+      </footer>
+    </div>
   `,
 })
 export class AppComponent implements OnInit {

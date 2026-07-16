@@ -94,7 +94,14 @@ export class NeDbDatabase implements Database {
   async updatePreset(id: string, patch: PresetPatch): Promise<PresetRecord | null> {
     const n = await this.presets.update(
       { id },
-      { $set: { name: patch.name, orderMode: patch.orderMode, articles: patch.articles } },
+      {
+        $set: {
+          name: patch.name,
+          orderMode: patch.orderMode,
+          articles: patch.articles,
+          articlePrices: patch.articlePrices,
+        },
+      },
       {},
     );
     if (!n) return null;

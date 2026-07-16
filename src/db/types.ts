@@ -14,10 +14,11 @@ export interface ArticleRef {
   combinedWith: string[];
 }
 
-/** An article/category in the (mock) source catalog the admin picks from. */
+/** An article/category in the source catalog the admin picks from. */
 export interface CatalogArticle {
   _id: string;
   name: string;
+  price: number;
 }
 
 export interface CatalogCategory {
@@ -48,6 +49,8 @@ export interface PresetRecord {
   name: string;
   orderMode: OrderMode;
   articles: ArticleRef[];
+  /** Unit price per article _id, captured from the catalog at save time. */
+  articlePrices: Record<string, number>;
   createdAt: number;
 }
 
@@ -55,6 +58,7 @@ export interface PresetPatch {
   name: string;
   orderMode: OrderMode;
   articles: ArticleRef[];
+  articlePrices: Record<string, number>;
 }
 
 /**

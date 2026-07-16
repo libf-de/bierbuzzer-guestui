@@ -1,6 +1,16 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import {
+  AfterViewInit,
+  Component,
+  OnInit,
+  TemplateRef,
+  ViewChild,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
 import { Observable } from 'rxjs';
 import {
   ApiService,
@@ -150,46 +160,6 @@ interface ProvisionWizard {
           <button class="btn btn-sm btn-primary" (click)="startWizard()" [disabled]="!!wizard()">Gerät anlegen</button>
         </div>
         <div class="card-body">
-          <!-- Assistent (3 Schritte) -->
-          <div *ngIf="wizard() as w" class="border rounded p-3 mb-3 bg-body-tertiary">
-            <div class="d-flex justify-content-between mb-2">
-              <span class="fw-semibold">Neues Gerät</span>
-              <span class="small text-secondary">Schritt {{ w.step }} von 3</span>
-            </div>
-
-            <div *ngIf="w.step === 1">
-              <label class="form-label small mb-0">MAC-Adresse</label>
-              <input class="form-control" [(ngModel)]="w.mac" [ngModelOptions]="{ standalone: true }" placeholder="AA:BB:CC:DD:EE:FF" />
-              <div class="mt-2">
-                <button class="btn btn-sm btn-outline-secondary" (click)="cancelWizard()">Abbrechen</button>
-                <button class="btn btn-sm btn-primary ms-1" (click)="wizardNext()" [disabled]="!w.mac.trim()">Weiter</button>
-              </div>
-            </div>
-
-            <div *ngIf="w.step === 2">
-              <label class="form-label small mb-0">Gerätename</label>
-              <input class="form-control" [(ngModel)]="w.name" [ngModelOptions]="{ standalone: true }" placeholder="z. B. Tisch 4" />
-              <div class="mt-2">
-                <button class="btn btn-sm btn-outline-secondary" (click)="wizardBack()">Zurück</button>
-                <button class="btn btn-sm btn-primary ms-1" (click)="wizardNext()" [disabled]="!w.name.trim()">Weiter</button>
-              </div>
-            </div>
-
-            <div *ngIf="w.step === 3">
-              <label class="form-label small mb-1">Voreinstellungen zuweisen (optional)</label>
-              <div class="form-check" *ngFor="let p of presets()">
-                <input class="form-check-input" type="checkbox" [id]="'wz-' + p.id" [checked]="w.sel.has(p.id)" (change)="toggleWizardPreset(p.id)" />
-                <label class="form-check-label" [for]="'wz-' + p.id">{{ p.name }}</label>
-              </div>
-              <p *ngIf="!presets().length" class="text-secondary small">Keine Voreinstellungen vorhanden.</p>
-              <div class="mt-2">
-                <button class="btn btn-sm btn-outline-secondary" (click)="wizardBack()">Zurück</button>
-                <button class="btn btn-sm btn-outline-secondary ms-1" (click)="completeWizard(false)" [disabled]="busy()">Überspringen</button>
-                <button class="btn btn-sm btn-primary ms-1" (click)="completeWizard(true)" [disabled]="busy()">Fertig</button>
-              </div>
-            </div>
-          </div>
-
           <div *ngFor="let d of devices()" class="border rounded p-2 mb-2">
             <div class="d-flex justify-content-between align-items-center">
               <span>
@@ -232,10 +202,58 @@ interface ProvisionWizard {
         </div>
       </section>
     </div>
+
+    <!-- Provisionierungs-Assistent (Modal) -->
+    <ng-template #wizardModal>
+      <ng-container *ngIf="wizard() as w">
+        <div class="modal-header">
+          <h5 class="modal-title">Neues Gerät · Schritt {{ w.step }} von 3</h5>
+          <button type="button" class="btn-close" aria-label="Schließen" (click)="cancelWizard()"></button>
+        </div>
+        <div class="modal-body">
+          <div *ngIf="w.step === 1">
+            <label class="form-label small mb-0">MAC-Adresse</label>
+            <input class="form-control" [(ngModel)]="w.mac" [ngModelOptions]="{ standalone: true }" placeholder="AA:BB:CC:DD:EE:FF" />
+          </div>
+
+          <div *ngIf="w.step === 2">
+            <label class="form-label small mb-0">Gerätename</label>
+            <input class="form-control" [(ngModel)]="w.name" [ngModelOptions]="{ standalone: true }" placeholder="z. B. Tisch 4" />
+          </div>
+
+          <div *ngIf="w.step === 3">
+            <label class="form-label small mb-1">Voreinstellungen zuweisen (optional)</label>
+            <div class="form-check" *ngFor="let p of presets()">
+              <input class="form-check-input" type="checkbox" [id]="'wz-' + p.id" [checked]="w.sel.has(p.id)" (change)="toggleWizardPreset(p.id)" />
+              <label class="form-check-label" [for]="'wz-' + p.id">{{ p.name }}</label>
+            </div>
+            <p *ngIf="!presets().length" class="text-secondary small m-0">Keine Voreinstellungen vorhanden.</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button *ngIf="w.step === 1" class="btn btn-outline-secondary" (click)="cancelWizard()">Abbrechen</button>
+          <button *ngIf="w.step > 1" class="btn btn-outline-secondary" (click)="wizardBack()">Zurück</button>
+          <button
+            *ngIf="w.step < 3"
+            class="btn btn-primary"
+            (click)="wizardNext()"
+            [disabled]="(w.step === 1 && !w.mac.trim()) || (w.step === 2 && !w.name.trim())"
+          >
+            Weiter
+          </button>
+          <button *ngIf="w.step === 3" class="btn btn-outline-secondary" (click)="completeWizard(false)" [disabled]="busy()">Überspringen</button>
+          <button *ngIf="w.step === 3" class="btn btn-primary" (click)="completeWizard(true)" [disabled]="busy()">Fertig</button>
+        </div>
+      </ng-container>
+    </ng-template>
   `,
 })
-export class AdminComponent implements OnInit {
+export class AdminComponent implements OnInit, AfterViewInit {
   private api = inject(ApiService);
+  private modal = inject(NgbModal);
+
+  @ViewChild('wizardModal', { static: true }) wizardModal!: TemplateRef<unknown>;
+  private modalRef?: NgbModalRef;
 
   loggedIn = computed(() => this.api.authToken() !== null);
   busy = signal(false);
@@ -261,10 +279,11 @@ export class AdminComponent implements OnInit {
   wizard = signal<ProvisionWizard | null>(null);
 
   ngOnInit(): void {
-    if (this.loggedIn()) {
-      this.refresh();
-      this.maybeStartPendingProvision();
-    }
+    if (this.loggedIn()) this.refresh();
+  }
+
+  ngAfterViewInit(): void {
+    if (this.loggedIn()) this.maybeStartPendingProvision();
   }
 
   login(): void {
@@ -333,10 +352,12 @@ export class AdminComponent implements OnInit {
     const orderMode: PresetBody['orderMode'] = { mode: ed.mode };
     if (ed.mode === 'russian_roulette') orderMode.roulette_percent = Number(ed.roulettePercent);
     if (ed.mode === 'random_article' && ed.randomCategory) orderMode.random_category = ed.randomCategory;
+    const priceById = new Map<string, number>();
+    for (const c of this.categories()) for (const a of c.articles) priceById.set(a._id, a.price);
     const body: PresetBody = {
       name: ed.name,
       orderMode,
-      articles: [...ed.selected].map((_id) => ({ _id, combinedWith: [] })),
+      articles: [...ed.selected].map((_id) => ({ _id, combinedWith: [], price: priceById.get(_id) })),
     };
     const req = ed.id ? this.api.adminUpdatePreset(ed.id, body) : this.api.adminCreatePreset(body);
     this.run(req, () => {
@@ -359,17 +380,24 @@ export class AdminComponent implements OnInit {
     const mac = sessionStorage.getItem('pendingProvisionMac');
     if (!mac) return;
     sessionStorage.removeItem('pendingProvisionMac');
-    this.startWizard(mac, 2);
+    // Defer so we don't open the modal mid change-detection cycle.
+    Promise.resolve().then(() => this.startWizard(mac, 2));
   }
 
   startWizard(mac = '', step: 1 | 2 | 3 = 1): void {
     this.renaming.set(null);
     this.assigning.set(null);
     this.wizard.set({ step, mac, name: '', sel: new Set<string>() });
+    this.modalRef = this.modal.open(this.wizardModal, { backdrop: 'static', keyboard: false });
+    // close() or dismiss() both clear the wizard state.
+    this.modalRef.result.then(
+      () => this.wizard.set(null),
+      () => this.wizard.set(null),
+    );
   }
 
   cancelWizard(): void {
-    this.wizard.set(null);
+    this.modalRef?.dismiss();
   }
 
   wizardNext(): void {
@@ -424,7 +452,7 @@ export class AdminComponent implements OnInit {
 
   private finishWizard(): void {
     this.busy.set(false);
-    this.wizard.set(null);
+    this.modalRef?.close();
     this.refresh();
   }
 
