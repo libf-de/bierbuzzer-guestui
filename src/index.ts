@@ -8,7 +8,7 @@ import { NeDbCredentialStore } from "./auth/NeDbCredentialStore";
 import { BasicAuthProvider } from "./auth/BasicAuthProvider";
 import { hashPassword } from "./auth/password";
 import { MqttService } from "./services/MqttService";
-import { ProvisioningService } from "./services/ProvisioningService";
+import { MqttProvisioningService } from "./services/MqttProvisioningService";
 import { DeviceService } from "./services/DeviceService";
 import { guestRoutes } from "./routes/guest";
 import { adminRoutes } from "./routes/admin";
@@ -26,7 +26,21 @@ async function main(): Promise<void> {
   await credentials.init();
   await seedAdmin(credentials);
 
-  // --- MQTT ---
+  // --- provisioning (dedicated admin dynsec connection) ---
+  const provisioning = new MqttProvisioningService({
+    url: config.mqtt.url,
+    username: config.dynsec.adminUser,
+    password: config.dynsec.adminPass,
+    timeoutMs: config.dynsec.controlTimeoutMs,
+  });
+  await provisioning.connect();
+  console.log("[provision] dynsec control over MQTT (admin connection)");
+
+  // Self-provision the backend's own least-privilege MQTT client (idempotent),
+  // so no manual mosquitto_ctrl bootstrap is needed — just admin creds.
+  await provisioning.ensureServerClient(config.mqtt.username, config.mqtt.password);
+
+  // --- MQTT (server identity, used for device pub/sub) ---
   const mqtt = new MqttService({
     url: config.mqtt.url,
     username: config.mqtt.username,
@@ -37,7 +51,6 @@ async function main(): Promise<void> {
   console.log(`[mqtt] connected to ${config.mqtt.url}`);
 
   // --- services ---
-  const provisioning = new ProvisioningService(config.mosquittoCtrl);
   const devices = new DeviceService(db, provisioning, mqtt, config.deviceSecret);
   const auth = new BasicAuthProvider(credentials);
 
@@ -76,6 +89,7 @@ async function main(): Promise<void> {
     console.log(`[app] ${sig} received, shutting down`);
     server.close();
     await mqtt.close();
+    await provisioning.close();
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));

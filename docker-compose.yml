@@ -15,12 +15,8 @@ services:
     env_file: .env
     environment:
       PORT: "3000"
-      # backend's live MQTT client reaches the broker by service name
+      # both the server client and the admin provisioning connection use this
       MQTT_URL: mqtt://mosquitto:1883
-      # mosquitto_ctrl runs inside this container (mosquitto-clients baked in)
-      MOSQUITTO_CTRL_MODE: native
-      MOSQUITTO_BROKER_HOST: mosquitto
-      MOSQUITTO_BROKER_PORT: "1883"
       # nedb files land on the named volume
       DB_DEVICES_PATH: /app/data/devices.db
       DB_ARTICLES_PATH: /app/data/articles.db

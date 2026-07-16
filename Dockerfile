@@ -18,8 +18,6 @@ RUN npm run build && npm prune --omit=dev
 # ---- runtime ----
 FROM node:20-alpine AS runtime
 ENV NODE_ENV=production
-# mosquitto_ctrl for native-mode dynsec provisioning (MOSQUITTO_CTRL_MODE=native)
-RUN apk add --no-cache mosquitto-clients
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist

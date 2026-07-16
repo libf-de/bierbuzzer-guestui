@@ -1,7 +1,7 @@
 import { deriveCredentials, normalizeMac } from "../crypto/credentials";
 import { Database, DeviceRecord } from "../db/types";
 import { MqttService } from "./MqttService";
-import { ProvisioningService } from "./ProvisioningService";
+import { Provisioner } from "./Provisioner";
 
 export class ConflictError extends Error {}
 export class NotFoundError extends Error {}
@@ -19,7 +19,7 @@ export interface ProvisionResult {
 export class DeviceService {
   constructor(
     private readonly db: Database,
-    private readonly provisioning: ProvisioningService,
+    private readonly provisioning: Provisioner,
     private readonly mqtt: MqttService,
     private readonly secret: string,
   ) {}

@@ -38,14 +38,12 @@ export const config = {
     ackTimeoutMs: num("ACK_TIMEOUT_MS", 5000),
   },
 
-  mosquittoCtrl: {
-    mode: optional("MOSQUITTO_CTRL_MODE", "docker") as "docker" | "native",
+  // dynsec admin identity — used only for the provisioning MQTT connection
+  // that publishes dynamic-security control commands.
+  dynsec: {
     adminUser: required("MOSQUITTO_ADMIN_USER"),
     adminPass: required("MOSQUITTO_ADMIN_PASS"),
-    host: optional("MOSQUITTO_BROKER_HOST", "mosquitto"),
-    port: optional("MOSQUITTO_BROKER_PORT", "1883"),
-    network: optional("MOSQUITTO_NETWORK", "traefik_net"),
-    image: optional("MOSQUITTO_IMAGE", "eclipse-mosquitto:2"),
+    controlTimeoutMs: num("DYNSEC_CONTROL_TIMEOUT_MS", 5000),
   },
 
   db: {
