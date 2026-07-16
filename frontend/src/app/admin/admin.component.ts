@@ -21,49 +21,56 @@ interface PresetEditor {
   selected: Set<string>;
 }
 
+interface ProvisionWizard {
+  step: 1 | 2 | 3;
+  mac: string;
+  name: string;
+  sel: Set<string>;
+}
+
 @Component({
   selector: 'app-admin',
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <!-- login (external auth) -->
+    <!-- Anmeldung (externe Authentifizierung) -->
     <div *ngIf="!loggedIn()" class="mx-auto" style="max-width: 24rem;">
-      <h1 class="h4 mb-3">Admin login</h1>
+      <h1 class="h4 mb-3">Admin-Anmeldung</h1>
       <div *ngIf="error()" class="alert alert-danger">{{ error() }}</div>
       <form (ngSubmit)="login()">
-        <input class="form-control mb-2" placeholder="Username" [(ngModel)]="loginUser" name="u" />
-        <input class="form-control mb-3" type="password" placeholder="Password" [(ngModel)]="loginPass" name="p" />
-        <button class="btn btn-primary w-100" [disabled]="busy() || !loginUser || !loginPass">Sign in</button>
+        <input class="form-control mb-2" placeholder="Benutzername" [(ngModel)]="loginUser" name="u" />
+        <input class="form-control mb-3" type="password" placeholder="Passwort" [(ngModel)]="loginPass" name="p" />
+        <button class="btn btn-primary w-100" [disabled]="busy() || !loginUser || !loginPass">Anmelden</button>
       </form>
     </div>
 
-    <!-- dashboard -->
+    <!-- Dashboard -->
     <div *ngIf="loggedIn()">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h1 class="h4 m-0">
           Admin
           <small class="text-secondary fs-6" *ngIf="accountName()">· {{ accountName() }}</small>
         </h1>
-        <button class="btn btn-outline-secondary btn-sm" (click)="logout()">Sign out</button>
+        <button class="btn btn-outline-secondary btn-sm" (click)="logout()">Abmelden</button>
       </div>
 
       <div *ngIf="error()" class="alert alert-danger">{{ error() }}</div>
 
       <div *ngIf="lastProvisioned() as p" class="alert alert-warning">
-        <strong>Device provisioned — copy now (shown once):</strong>
+        <strong>Gerät angelegt — jetzt kopieren (nur einmal sichtbar):</strong>
         <div class="mt-2 font-monospace small">
-          <div>username: {{ p.credentials.username }}</div>
-          <div>password: {{ p.credentials.password }}</div>
-          <div>guest URL: {{ guestUrl(p.device.topicId) }}</div>
+          <div>Benutzername: {{ p.credentials.username }}</div>
+          <div>Passwort: {{ p.credentials.password }}</div>
+          <div>Gast-URL: {{ guestUrl(p.device.topicId) }}</div>
         </div>
-        <button class="btn btn-sm btn-outline-dark mt-2" (click)="lastProvisioned.set(null)">Dismiss</button>
+        <button class="btn btn-sm btn-outline-dark mt-2" (click)="lastProvisioned.set(null)">Schließen</button>
       </div>
 
-      <!-- presets -->
+      <!-- Voreinstellungen -->
       <section class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <span class="fw-semibold">Presets</span>
-          <button class="btn btn-sm btn-primary" (click)="newPreset()">New preset</button>
+          <span class="fw-semibold">Voreinstellungen</span>
+          <button class="btn btn-sm btn-primary" (click)="newPreset()">Neue Voreinstellung</button>
         </div>
         <div class="card-body">
           <div *ngIf="editor() as ed" class="border rounded p-3 mb-3 bg-body-tertiary">
@@ -73,11 +80,11 @@ interface PresetEditor {
                 <input class="form-control" [(ngModel)]="ed.name" name="pn" />
               </div>
               <div class="col-sm-6">
-                <label class="form-label small mb-0">Order mode</label>
+                <label class="form-label small mb-0">Bestellmodus</label>
                 <select class="form-select" [(ngModel)]="ed.mode" name="pm">
-                  <option value="fixed">fixed</option>
-                  <option value="random_article">random_article</option>
-                  <option value="russian_roulette">russian_roulette</option>
+                  <option value="fixed">Fest</option>
+                  <option value="random_article">Zufälliger Artikel</option>
+                  <option value="russian_roulette">Russisches Roulette</option>
                 </select>
               </div>
             </div>
@@ -88,15 +95,15 @@ interface PresetEditor {
                 <input class="form-control" type="number" min="0" max="100" [(ngModel)]="ed.roulettePercent" name="pr" />
               </div>
               <div class="col-sm-6" *ngIf="ed.mode === 'random_article'">
-                <label class="form-label small mb-0">Random category</label>
+                <label class="form-label small mb-0">Zufällige Kategorie</label>
                 <select class="form-select" [(ngModel)]="ed.randomCategory" name="pc">
-                  <option value="">(none)</option>
+                  <option value="">(keine)</option>
                   <option *ngFor="let c of categories()" [value]="c.name">{{ c.name }}</option>
                 </select>
               </div>
             </div>
 
-            <label class="form-label small mb-1">Articles</label>
+            <label class="form-label small mb-1">Artikel</label>
             <div *ngFor="let c of categories()" class="mb-2">
               <div class="fw-semibold small">{{ c.name }}</div>
               <div class="d-flex flex-wrap gap-2">
@@ -114,8 +121,8 @@ interface PresetEditor {
             </div>
 
             <div class="mt-2">
-              <button class="btn btn-sm btn-primary" (click)="savePreset(ed)" [disabled]="busy() || !ed.name">Save</button>
-              <button class="btn btn-sm btn-outline-secondary ms-2" (click)="editor.set(null)">Cancel</button>
+              <button class="btn btn-sm btn-primary" (click)="savePreset(ed)" [disabled]="busy() || !ed.name">Speichern</button>
+              <button class="btn btn-sm btn-outline-secondary ms-2" (click)="editor.set(null)">Abbrechen</button>
             </div>
           </div>
 
@@ -123,47 +130,88 @@ interface PresetEditor {
             <li *ngFor="let p of presets()" class="list-group-item d-flex justify-content-between align-items-center">
               <span>
                 <strong>{{ p.name }}</strong>
-                <span class="badge text-bg-light ms-2">{{ p.orderMode.mode }}</span>
-                <span class="text-secondary small ms-2">{{ p.articles.length }} article(s)</span>
+                <span class="badge text-bg-light ms-2">{{ modeLabel(p.orderMode.mode) }}</span>
+                <span class="text-secondary small ms-2">{{ p.articles.length }} Artikel</span>
               </span>
               <span>
-                <button class="btn btn-sm btn-outline-secondary" (click)="editPreset(p)">Edit</button>
-                <button class="btn btn-sm btn-outline-danger ms-1" (click)="removePreset(p)">Delete</button>
+                <button class="btn btn-sm btn-outline-secondary" (click)="editPreset(p)">Bearbeiten</button>
+                <button class="btn btn-sm btn-outline-danger ms-1" (click)="removePreset(p)">Löschen</button>
               </span>
             </li>
           </ul>
-          <ng-template #noPresets><p class="text-secondary m-0">No presets yet.</p></ng-template>
+          <ng-template #noPresets><p class="text-secondary m-0">Noch keine Voreinstellungen.</p></ng-template>
         </div>
       </section>
 
-      <!-- devices -->
+      <!-- Geräte -->
       <section class="card">
-        <div class="card-header fw-semibold">Devices</div>
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span class="fw-semibold">Geräte</span>
+          <button class="btn btn-sm btn-primary" (click)="startWizard()" [disabled]="!!wizard()">Gerät anlegen</button>
+        </div>
         <div class="card-body">
-          <form class="row g-2 mb-3" (ngSubmit)="provision()">
-            <div class="col-sm-5">
-              <input class="form-control" placeholder="MAC (AA:BB:CC:DD:EE:FF)" [(ngModel)]="newMac" name="mac" />
+          <!-- Assistent (3 Schritte) -->
+          <div *ngIf="wizard() as w" class="border rounded p-3 mb-3 bg-body-tertiary">
+            <div class="d-flex justify-content-between mb-2">
+              <span class="fw-semibold">Neues Gerät</span>
+              <span class="small text-secondary">Schritt {{ w.step }} von 3</span>
             </div>
-            <div class="col-sm-4">
-              <input class="form-control" placeholder="Label (optional)" [(ngModel)]="newLabel" name="label" />
+
+            <div *ngIf="w.step === 1">
+              <label class="form-label small mb-0">MAC-Adresse</label>
+              <input class="form-control" [(ngModel)]="w.mac" [ngModelOptions]="{ standalone: true }" placeholder="AA:BB:CC:DD:EE:FF" />
+              <div class="mt-2">
+                <button class="btn btn-sm btn-outline-secondary" (click)="cancelWizard()">Abbrechen</button>
+                <button class="btn btn-sm btn-primary ms-1" (click)="wizardNext()" [disabled]="!w.mac.trim()">Weiter</button>
+              </div>
             </div>
-            <div class="col-sm-3 d-grid">
-              <button class="btn btn-primary" [disabled]="busy() || !newMac">Provision</button>
+
+            <div *ngIf="w.step === 2">
+              <label class="form-label small mb-0">Gerätename</label>
+              <input class="form-control" [(ngModel)]="w.name" [ngModelOptions]="{ standalone: true }" placeholder="z. B. Tisch 4" />
+              <div class="mt-2">
+                <button class="btn btn-sm btn-outline-secondary" (click)="wizardBack()">Zurück</button>
+                <button class="btn btn-sm btn-primary ms-1" (click)="wizardNext()" [disabled]="!w.name.trim()">Weiter</button>
+              </div>
             </div>
-          </form>
+
+            <div *ngIf="w.step === 3">
+              <label class="form-label small mb-1">Voreinstellungen zuweisen (optional)</label>
+              <div class="form-check" *ngFor="let p of presets()">
+                <input class="form-check-input" type="checkbox" [id]="'wz-' + p.id" [checked]="w.sel.has(p.id)" (change)="toggleWizardPreset(p.id)" />
+                <label class="form-check-label" [for]="'wz-' + p.id">{{ p.name }}</label>
+              </div>
+              <p *ngIf="!presets().length" class="text-secondary small">Keine Voreinstellungen vorhanden.</p>
+              <div class="mt-2">
+                <button class="btn btn-sm btn-outline-secondary" (click)="wizardBack()">Zurück</button>
+                <button class="btn btn-sm btn-outline-secondary ms-1" (click)="completeWizard(false)" [disabled]="busy()">Überspringen</button>
+                <button class="btn btn-sm btn-primary ms-1" (click)="completeWizard(true)" [disabled]="busy()">Fertig</button>
+              </div>
+            </div>
+          </div>
 
           <div *ngFor="let d of devices()" class="border rounded p-2 mb-2">
             <div class="d-flex justify-content-between align-items-center">
               <span>
                 <strong>{{ d.label || '—' }}</strong>
                 <a class="ms-2 small" [href]="guestUrl(d.topicId)" target="_blank">{{ d.topicId }}</a>
-                <span class="text-secondary small ms-2">{{ d.assignedPresetIds.length }} preset(s)</span>
+                <span class="text-secondary small ms-2">{{ d.assignedPresetIds.length }} Voreinstellung(en)</span>
               </span>
               <span>
-                <button class="btn btn-sm btn-outline-secondary" (click)="toggleAssign(d)">Presets</button>
-                <button class="btn btn-sm btn-outline-danger ms-1" (click)="removeDevice(d)">Delete</button>
+                <button class="btn btn-sm btn-outline-secondary" (click)="startRename(d)">Umbenennen</button>
+                <button class="btn btn-sm btn-outline-secondary ms-1" (click)="toggleAssign(d)">Voreinstellungen</button>
+                <button class="btn btn-sm btn-outline-danger ms-1" (click)="removeDevice(d)">Löschen</button>
               </span>
             </div>
+
+            <div *ngIf="renaming() === d.topicId" class="mt-2 border-top pt-2">
+              <div class="input-group input-group-sm">
+                <input class="form-control" [(ngModel)]="renameVal" [ngModelOptions]="{ standalone: true }" placeholder="Bezeichnung" />
+                <button class="btn btn-primary" (click)="saveRename(d)" [disabled]="busy()">Speichern</button>
+                <button class="btn btn-outline-secondary" (click)="renaming.set(null)">Abbrechen</button>
+              </div>
+            </div>
+
             <div *ngIf="assigning() === d.topicId" class="mt-2 border-top pt-2">
               <div class="form-check" *ngFor="let p of presets()">
                 <input
@@ -175,12 +223,12 @@ interface PresetEditor {
                 />
                 <label class="form-check-label" [for]="'dp-' + d.topicId + '-' + p.id">{{ p.name }}</label>
               </div>
-              <p *ngIf="!presets().length" class="text-secondary small">Create presets first.</p>
-              <button class="btn btn-sm btn-primary mt-1" (click)="saveAssign(d)" [disabled]="busy()">Save</button>
-              <button class="btn btn-sm btn-outline-secondary ms-1 mt-1" (click)="assigning.set(null)">Cancel</button>
+              <p *ngIf="!presets().length" class="text-secondary small">Zuerst Voreinstellungen erstellen.</p>
+              <button class="btn btn-sm btn-primary mt-1" (click)="saveAssign(d)" [disabled]="busy()">Speichern</button>
+              <button class="btn btn-sm btn-outline-secondary ms-1 mt-1" (click)="assigning.set(null)">Abbrechen</button>
             </div>
           </div>
-          <p *ngIf="!devices().length" class="text-secondary m-0">No devices yet.</p>
+          <p *ngIf="!devices().length && !wizard()" class="text-secondary m-0">Noch keine Geräte.</p>
         </div>
       </section>
     </div>
@@ -207,11 +255,16 @@ export class AdminComponent implements OnInit {
   assigning = signal<string | null>(null);
   assignSel = new Set<string>();
 
-  newMac = '';
-  newLabel = '';
+  renaming = signal<string | null>(null);
+  renameVal = '';
+
+  wizard = signal<ProvisionWizard | null>(null);
 
   ngOnInit(): void {
-    if (this.loggedIn()) this.refresh();
+    if (this.loggedIn()) {
+      this.refresh();
+      this.maybeStartPendingProvision();
+    }
   }
 
   login(): void {
@@ -223,10 +276,11 @@ export class AdminComponent implements OnInit {
         this.api.setToken(r.apiKey);
         this.loginPass = '';
         this.refresh();
+        this.maybeStartPendingProvision();
       },
       error: (e) => {
         this.busy.set(false);
-        this.error.set(e.status === 401 ? 'Invalid credentials' : e.error?.error ?? 'Login failed');
+        this.error.set(e.status === 401 ? 'Ungültige Anmeldedaten' : e.error?.error ?? 'Anmeldung fehlgeschlagen');
       },
     });
   }
@@ -246,7 +300,7 @@ export class AdminComponent implements OnInit {
     this.api.adminListDevices().subscribe({ next: (r) => this.devices.set(r.devices), error: (e) => this.onErr(e) });
   }
 
-  // ---- presets ----
+  // ---- Voreinstellungen ----
 
   newPreset(): void {
     this.editor.set({
@@ -292,27 +346,108 @@ export class AdminComponent implements OnInit {
   }
 
   removePreset(p: Preset): void {
-    if (!confirm(`Delete preset "${p.name}"?`)) return;
+    if (!confirm(`Voreinstellung „${p.name}" löschen?`)) return;
     this.run(this.api.adminDeletePreset(p.id), () => this.refresh());
   }
 
-  // ---- devices ----
+  // ---- Geräte ----
 
-  provision(): void {
-    this.run(this.api.adminCreateDevice(this.newMac, this.newLabel), (res) => {
-      this.lastProvisioned.set(res);
-      this.newMac = '';
-      this.newLabel = '';
+  // ---- provisioning wizard ----
+
+  /** Resume a provision URL (?provisionMac=...) at step 2, once logged in. */
+  private maybeStartPendingProvision(): void {
+    const mac = sessionStorage.getItem('pendingProvisionMac');
+    if (!mac) return;
+    sessionStorage.removeItem('pendingProvisionMac');
+    this.startWizard(mac, 2);
+  }
+
+  startWizard(mac = '', step: 1 | 2 | 3 = 1): void {
+    this.renaming.set(null);
+    this.assigning.set(null);
+    this.wizard.set({ step, mac, name: '', sel: new Set<string>() });
+  }
+
+  cancelWizard(): void {
+    this.wizard.set(null);
+  }
+
+  wizardNext(): void {
+    const w = this.wizard();
+    if (!w) return;
+    if (w.step === 1 && !w.mac.trim()) return;
+    if (w.step === 2 && !w.name.trim()) return;
+    this.wizard.set({ ...w, step: (w.step + 1) as 1 | 2 | 3 });
+  }
+
+  wizardBack(): void {
+    const w = this.wizard();
+    if (!w || w.step === 1) return;
+    this.wizard.set({ ...w, step: (w.step - 1) as 1 | 2 | 3 });
+  }
+
+  toggleWizardPreset(id: string): void {
+    const w = this.wizard();
+    if (!w) return;
+    if (w.sel.has(id)) w.sel.delete(id);
+    else w.sel.add(id);
+  }
+
+  /** Create the device, then optionally assign the selected presets. */
+  completeWizard(withPresets: boolean): void {
+    const w = this.wizard();
+    if (!w) return;
+    this.busy.set(true);
+    this.error.set('');
+    this.api.adminCreateDevice(w.mac.trim(), w.name.trim() || undefined).subscribe({
+      next: (res) => {
+        this.lastProvisioned.set(res);
+        const ids = withPresets ? [...w.sel] : [];
+        if (ids.length) {
+          this.api.adminSetDevicePresets(res.device.topicId, ids).subscribe({
+            next: () => this.finishWizard(),
+            error: (e) => {
+              this.busy.set(false);
+              this.onErr(e);
+            },
+          });
+        } else {
+          this.finishWizard();
+        }
+      },
+      error: (e) => {
+        this.busy.set(false);
+        this.onErr(e);
+      },
+    });
+  }
+
+  private finishWizard(): void {
+    this.busy.set(false);
+    this.wizard.set(null);
+    this.refresh();
+  }
+
+  removeDevice(d: Device): void {
+    if (!confirm(`Gerät ${d.label || d.topicId} löschen?`)) return;
+    this.run(this.api.adminDeleteDevice(d.topicId), () => this.refresh());
+  }
+
+  startRename(d: Device): void {
+    this.assigning.set(null);
+    this.renameVal = d.label ?? '';
+    this.renaming.set(d.topicId);
+  }
+
+  saveRename(d: Device): void {
+    this.run(this.api.adminRenameDevice(d.topicId, this.renameVal.trim()), () => {
+      this.renaming.set(null);
       this.refresh();
     });
   }
 
-  removeDevice(d: Device): void {
-    if (!confirm(`Delete device ${d.label || d.topicId}?`)) return;
-    this.run(this.api.adminDeleteDevice(d.topicId), () => this.refresh());
-  }
-
   toggleAssign(d: Device): void {
+    this.renaming.set(null);
     if (this.assigning() === d.topicId) {
       this.assigning.set(null);
       return;
@@ -333,7 +468,11 @@ export class AdminComponent implements OnInit {
     });
   }
 
-  // ---- helpers ----
+  // ---- Helfer ----
+
+  modeLabel(mode: OrderModeName): string {
+    return mode === 'fixed' ? 'Fest' : mode === 'random_article' ? 'Zufälliger Artikel' : 'Russisches Roulette';
+  }
 
   guestUrl(topicId: string): string {
     return `${location.origin}/g/${topicId}`;
@@ -357,9 +496,9 @@ export class AdminComponent implements OnInit {
   private onErr(e: any): void {
     if (e.status === 401) {
       this.api.clearAuth();
-      this.error.set('Session expired — sign in again');
+      this.error.set('Sitzung abgelaufen — bitte erneut anmelden');
       return;
     }
-    this.error.set(e.error?.error ?? 'Request failed');
+    this.error.set(e.error?.error ?? 'Anfrage fehlgeschlagen');
   }
 }

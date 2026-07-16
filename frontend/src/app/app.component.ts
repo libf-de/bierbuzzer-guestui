@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
+import { ApiService } from './api.service';
 
 @Component({
   selector: 'app-root',
@@ -19,4 +20,34 @@ import { RouterLink, RouterOutlet } from '@angular/router';
     </main>
   `,
 })
-export class AppComponent {}
+export class AppComponent implements OnInit {
+  private api = inject(ApiService);
+
+  ngOnInit(): void {
+    // Consume deep-link query params and strip them from the URL immediately so
+    // they do not linger in the address bar / history.
+    //   ?apiKey=...       -> log in with this token
+    //   ?provisionMac=... -> open the provisioning wizard for this MAC
+    const url = new URL(window.location.href);
+    let changed = false;
+
+    const apiKey = url.searchParams.get('apiKey');
+    if (apiKey) {
+      url.searchParams.delete('apiKey');
+      this.api.setToken(apiKey);
+      changed = true;
+    }
+
+    const mac = url.searchParams.get('provisionMac');
+    if (mac) {
+      url.searchParams.delete('provisionMac');
+      // Persist so it survives the login step, then resume at wizard step 2.
+      sessionStorage.setItem('pendingProvisionMac', mac);
+      changed = true;
+    }
+
+    if (changed) {
+      history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+    }
+  }
+}

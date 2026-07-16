@@ -63,6 +63,13 @@ export class NeDbDatabase implements Database {
     return this.getDeviceByTopicId(topicId);
   }
 
+  async setDeviceLabel(topicId: string, label: string): Promise<DeviceRecord | null> {
+    const update = label ? { $set: { label } } : { $unset: { label: true } };
+    const n = await this.devices.update({ topicId }, update, {});
+    if (!n) return null;
+    return this.getDeviceByTopicId(topicId);
+  }
+
   // --- presets ---
 
   async createPreset(rec: PresetRecord): Promise<PresetRecord> {

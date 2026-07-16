@@ -178,6 +178,14 @@ export class ApiService {
     );
   }
 
+  adminRenameDevice(topicId: string, label: string): Observable<{ device: Device }> {
+    return this.http.put<{ device: Device }>(
+      `${this.base}/admin/devices/${topicId}/label`,
+      { label },
+      this.opts(),
+    );
+  }
+
   adminDeleteDevice(topicId: string): Observable<void> {
     return this.http.delete<void>(`${this.base}/admin/devices/${topicId}`, this.opts());
   }

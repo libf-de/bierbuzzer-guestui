@@ -1,7 +1,7 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
-import { ApiService, AckState, DeviceStatus, GuestPreset } from '../api.service';
+import { ApiService, AckState, DeviceStatus, GuestPreset, OrderModeName } from '../api.service';
 
 @Component({
   selector: 'app-guest',
@@ -10,13 +10,13 @@ import { ApiService, AckState, DeviceStatus, GuestPreset } from '../api.service'
   template: `
     <div class="mx-auto" style="max-width: 32rem;">
       <div class="d-flex justify-content-between align-items-center mb-1">
-        <h1 class="h4 m-0">{{ label() || 'Table button' }}</h1>
+        <h1 class="h4 m-0">{{ label() || 'Tischknopf' }}</h1>
         <span
           class="badge"
           [class.text-bg-success]="status()?.state === 'online'"
           [class.text-bg-secondary]="status()?.state !== 'online'"
         >
-          {{ status()?.state || 'unknown' }}
+          {{ stateLabel() }}
         </span>
       </div>
       <p class="text-secondary small mb-3"><code>{{ topicId }}</code></p>
@@ -25,10 +25,10 @@ import { ApiService, AckState, DeviceStatus, GuestPreset } from '../api.service'
       <div *ngIf="message()" class="alert alert-success">{{ message() }}</div>
 
       <div *ngIf="applied() as a" class="alert alert-info small">
-        Current: <strong>{{ describe(a) }}</strong>
+        Aktuell: <strong>{{ describe(a) }}</strong>
       </div>
 
-      <h2 class="h6 text-secondary">Choose a preset</h2>
+      <h2 class="h6 text-secondary">Voreinstellung wählen</h2>
       <div class="list-group">
         <button
           *ngFor="let p of presets()"
@@ -38,13 +38,13 @@ import { ApiService, AckState, DeviceStatus, GuestPreset } from '../api.service'
         >
           <div class="fw-semibold">{{ p.name }}</div>
           <div class="small text-secondary">
-            {{ p.orderMode.mode }}<span *ngIf="p.articles.length"> · {{ p.articles.length }} article(s)</span>
+            {{ modeLabel(p.orderMode.mode) }}<span *ngIf="p.articles.length"> · {{ p.articles.length }} Artikel</span>
           </div>
         </button>
       </div>
 
       <p *ngIf="!presets().length && !error()" class="text-secondary mt-3">
-        No presets available for this button yet.
+        Für diesen Knopf sind noch keine Voreinstellungen verfügbar.
       </p>
     </div>
   `,
@@ -75,7 +75,7 @@ export class GuestComponent implements OnInit {
         this.status.set(d.status);
         this.label.set(d.label);
       },
-      error: (e) => this.error.set(e.error?.error ?? 'Unknown device'),
+      error: (e) => this.error.set(e.error?.error ?? 'Unbekanntes Gerät'),
     });
   }
 
@@ -87,20 +87,35 @@ export class GuestComponent implements OnInit {
       next: (r) => {
         this.loading.set(false);
         this.message.set(
-          r.confirmed ? `Applied "${p.name}" ✓` : `Queued "${p.name}" — device offline, applies on reconnect`,
+          r.confirmed
+            ? `„${p.name}" angewendet ✓`
+            : `„${p.name}" in Warteschlange — Gerät offline, wird bei Verbindung angewendet`,
         );
         this.load();
       },
       error: (e) => {
         this.loading.set(false);
-        this.error.set(e.error?.error ?? 'Failed to apply preset');
+        this.error.set(e.error?.error ?? 'Anwenden fehlgeschlagen');
       },
     });
   }
 
+  stateLabel(): string {
+    const s = this.status()?.state;
+    return s === 'online' ? 'Online' : s === 'offline' ? 'Offline' : 'Unbekannt';
+  }
+
+  modeLabel(mode: OrderModeName): string {
+    return mode === 'fixed'
+      ? 'Fest'
+      : mode === 'random_article'
+        ? 'Zufälliger Artikel'
+        : 'Russisches Roulette';
+  }
+
   describe(a: AckState): string {
-    const mode = a.orderMode?.mode ?? '—';
+    const mode = a.orderMode ? this.modeLabel(a.orderMode.mode) : '—';
     const count = a.articles?.length ?? 0;
-    return `${mode}, ${count} article(s)${a.ok ? '' : ' (rejected)'}`;
+    return `${mode}, ${count} Artikel${a.ok ? '' : ' (abgelehnt)'}`;
   }
 }

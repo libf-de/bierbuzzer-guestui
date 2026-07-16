@@ -76,6 +76,8 @@ export interface Database {
   listDevicesByAccount(accountId: string): Promise<DeviceRecord[]>;
   deleteDevice(topicId: string): Promise<boolean>;
   setDevicePresets(topicId: string, presetIds: string[]): Promise<DeviceRecord | null>;
+  /** Rename a device. Empty label clears it. Null if unknown. */
+  setDeviceLabel(topicId: string, label: string): Promise<DeviceRecord | null>;
 
   // presets
   createPreset(rec: PresetRecord): Promise<PresetRecord>;

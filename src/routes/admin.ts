@@ -18,6 +18,10 @@ const macSchema = z.object({
   label: z.string().min(1).optional(),
 });
 
+const labelSchema = z.object({
+  label: z.string().trim().max(100),
+});
+
 export interface AdminDeps {
   db: Database;
   devices: DeviceService;
@@ -135,6 +139,16 @@ export function adminRoutes(deps: AdminDeps): Router {
       const { mac, label } = parseBody(macSchema, req.body);
       const { device, password } = await deps.devices.provision(mac, accountId(req), label);
       res.status(201).json({ device, credentials: { username: device.username, password } });
+    }),
+  );
+
+  router.put(
+    "/devices/:topicId/label",
+    asyncHandler(async (req, res) => {
+      await ownedDevice(deps, req.params.topicId, accountId(req));
+      const { label } = parseBody(labelSchema, req.body);
+      const device = await deps.db.setDeviceLabel(req.params.topicId, label);
+      res.json({ device });
     }),
   );
 
