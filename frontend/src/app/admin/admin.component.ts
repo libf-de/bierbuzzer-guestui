@@ -2,7 +2,25 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Observable } from 'rxjs';
-import { ApiService, Article, Device, ProvisionResult } from '../api.service';
+import {
+  Account,
+  ApiService,
+  CatalogCategory,
+  Device,
+  OrderModeName,
+  Preset,
+  PresetBody,
+  ProvisionResult,
+} from '../api.service';
+
+interface PresetEditor {
+  id: string | null;
+  name: string;
+  mode: OrderModeName;
+  roulettePercent: number;
+  randomCategory: string;
+  selected: Set<string>;
+}
 
 @Component({
   selector: 'app-admin',
@@ -15,13 +33,7 @@ import { ApiService, Article, Device, ProvisionResult } from '../api.service';
       <div *ngIf="error()" class="alert alert-danger">{{ error() }}</div>
       <form (ngSubmit)="login()">
         <input class="form-control mb-2" placeholder="Username" [(ngModel)]="loginUser" name="u" />
-        <input
-          class="form-control mb-3"
-          type="password"
-          placeholder="Password"
-          [(ngModel)]="loginPass"
-          name="p"
-        />
+        <input class="form-control mb-3" type="password" placeholder="Password" [(ngModel)]="loginPass" name="p" />
         <button class="btn btn-primary w-100" [disabled]="busy()">Sign in</button>
       </form>
     </div>
@@ -29,25 +41,99 @@ import { ApiService, Article, Device, ProvisionResult } from '../api.service';
     <!-- dashboard -->
     <div *ngIf="loggedIn()">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="h4 m-0">Admin</h1>
+        <h1 class="h4 m-0">Admin <small class="text-secondary fs-6">· {{ account()?.name }}</small></h1>
         <button class="btn btn-outline-secondary btn-sm" (click)="logout()">Sign out</button>
       </div>
 
       <div *ngIf="error()" class="alert alert-danger">{{ error() }}</div>
 
-      <!-- one-time credential reveal -->
       <div *ngIf="lastProvisioned() as p" class="alert alert-warning">
-        <strong>Device provisioned — copy these now (shown once):</strong>
+        <strong>Device provisioned — copy now (shown once):</strong>
         <div class="mt-2 font-monospace small">
-          <div>topicId: {{ p.device.topicId }}</div>
           <div>username: {{ p.credentials.username }}</div>
           <div>password: {{ p.credentials.password }}</div>
           <div>guest URL: {{ guestUrl(p.device.topicId) }}</div>
         </div>
-        <button class="btn btn-sm btn-outline-dark mt-2" (click)="lastProvisioned.set(null)">
-          Dismiss
-        </button>
+        <button class="btn btn-sm btn-outline-dark mt-2" (click)="lastProvisioned.set(null)">Dismiss</button>
       </div>
+
+      <!-- presets -->
+      <section class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span class="fw-semibold">Presets</span>
+          <button class="btn btn-sm btn-primary" (click)="newPreset()">New preset</button>
+        </div>
+        <div class="card-body">
+          <!-- editor -->
+          <div *ngIf="editor() as ed" class="border rounded p-3 mb-3 bg-body-tertiary">
+            <div class="row g-2 mb-2">
+              <div class="col-sm-6">
+                <label class="form-label small mb-0">Name</label>
+                <input class="form-control" [(ngModel)]="ed.name" name="pn" />
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label small mb-0">Order mode</label>
+                <select class="form-select" [(ngModel)]="ed.mode" name="pm">
+                  <option value="fixed">fixed</option>
+                  <option value="random_article">random_article</option>
+                  <option value="russian_roulette">russian_roulette</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="row g-2 mb-2">
+              <div class="col-sm-6" *ngIf="ed.mode === 'russian_roulette'">
+                <label class="form-label small mb-0">Roulette % (0–100)</label>
+                <input class="form-control" type="number" min="0" max="100" [(ngModel)]="ed.roulettePercent" name="pr" />
+              </div>
+              <div class="col-sm-6" *ngIf="ed.mode === 'random_article'">
+                <label class="form-label small mb-0">Random category</label>
+                <select class="form-select" [(ngModel)]="ed.randomCategory" name="pc">
+                  <option value="">(none)</option>
+                  <option *ngFor="let c of categories()" [value]="c.name">{{ c.name }}</option>
+                </select>
+              </div>
+            </div>
+
+            <label class="form-label small mb-1">Articles</label>
+            <div *ngFor="let c of categories()" class="mb-2">
+              <div class="fw-semibold small">{{ c.name }}</div>
+              <div class="d-flex flex-wrap gap-2">
+                <div class="form-check" *ngFor="let a of c.articles">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    [id]="'a-' + a._id"
+                    [checked]="ed.selected.has(a._id)"
+                    (change)="toggleArticle(ed, a._id)"
+                  />
+                  <label class="form-check-label small" [for]="'a-' + a._id">{{ a.name }}</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-2">
+              <button class="btn btn-sm btn-primary" (click)="savePreset(ed)" [disabled]="busy() || !ed.name">Save</button>
+              <button class="btn btn-sm btn-outline-secondary ms-2" (click)="editor.set(null)">Cancel</button>
+            </div>
+          </div>
+
+          <ul class="list-group" *ngIf="presets().length; else noPresets">
+            <li *ngFor="let p of presets()" class="list-group-item d-flex justify-content-between align-items-center">
+              <span>
+                <strong>{{ p.name }}</strong>
+                <span class="badge text-bg-light ms-2">{{ p.orderMode.mode }}</span>
+                <span class="text-secondary small ms-2">{{ p.articles.length }} article(s)</span>
+              </span>
+              <span>
+                <button class="btn btn-sm btn-outline-secondary" (click)="editPreset(p)">Edit</button>
+                <button class="btn btn-sm btn-outline-danger ms-1" (click)="removePreset(p)">Delete</button>
+              </span>
+            </li>
+          </ul>
+          <ng-template #noPresets><p class="text-secondary m-0">No presets yet.</p></ng-template>
+        </div>
+      </section>
 
       <!-- devices -->
       <section class="card mb-4">
@@ -65,49 +151,35 @@ import { ApiService, Article, Device, ProvisionResult } from '../api.service';
             </div>
           </form>
 
-          <table class="table table-sm align-middle mb-0" *ngIf="devices().length; else noDevices">
-            <thead>
-              <tr><th>Label</th><th>MAC</th><th>topicId</th><th></th></tr>
-            </thead>
-            <tbody>
-              <tr *ngFor="let d of devices()">
-                <td>{{ d.label || '—' }}</td>
-                <td class="font-monospace small">{{ d.mac }}</td>
-                <td class="font-monospace small text-truncate" style="max-width: 12rem;">
-                  <a [href]="guestUrl(d.topicId)" target="_blank">{{ d.topicId }}</a>
-                </td>
-                <td class="text-end">
-                  <button class="btn btn-sm btn-outline-danger" (click)="removeDevice(d)">Delete</button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <ng-template #noDevices><p class="text-secondary m-0">No devices yet.</p></ng-template>
-        </div>
-      </section>
-
-      <!-- articles -->
-      <section class="card mb-4">
-        <div class="card-header fw-semibold">Menu (article whitelist)</div>
-        <div class="card-body">
-          <form class="row g-2 mb-3" (ngSubmit)="addArticle()">
-            <div class="col-sm-4">
-              <input class="form-control" placeholder="id (e.g. pils)" [(ngModel)]="newArtId" name="aid" />
+          <div *ngFor="let d of devices()" class="border rounded p-2 mb-2">
+            <div class="d-flex justify-content-between align-items-center">
+              <span>
+                <strong>{{ d.label || '—' }}</strong>
+                <a class="ms-2 small" [href]="guestUrl(d.topicId)" target="_blank">{{ d.topicId }}</a>
+                <span class="text-secondary small ms-2">{{ d.assignedPresetIds.length }} preset(s)</span>
+              </span>
+              <span>
+                <button class="btn btn-sm btn-outline-secondary" (click)="toggleAssign(d)">Presets</button>
+                <button class="btn btn-sm btn-outline-danger ms-1" (click)="removeDevice(d)">Delete</button>
+              </span>
             </div>
-            <div class="col-sm-5">
-              <input class="form-control" placeholder="Name (e.g. Pilsner)" [(ngModel)]="newArtName" name="aname" />
+            <div *ngIf="assigning() === d.topicId" class="mt-2 border-top pt-2">
+              <div class="form-check" *ngFor="let p of presets()">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  [id]="'dp-' + d.topicId + '-' + p.id"
+                  [checked]="assignSel.has(p.id)"
+                  (change)="toggleAssignPreset(p.id)"
+                />
+                <label class="form-check-label" [for]="'dp-' + d.topicId + '-' + p.id">{{ p.name }}</label>
+              </div>
+              <p *ngIf="!presets().length" class="text-secondary small">Create presets first.</p>
+              <button class="btn btn-sm btn-primary mt-1" (click)="saveAssign(d)" [disabled]="busy()">Save</button>
+              <button class="btn btn-sm btn-outline-secondary ms-1 mt-1" (click)="assigning.set(null)">Cancel</button>
             </div>
-            <div class="col-sm-3 d-grid">
-              <button class="btn btn-primary" [disabled]="busy() || !newArtId || !newArtName">Add</button>
-            </div>
-          </form>
-          <ul class="list-group" *ngIf="articles().length; else noArticles">
-            <li *ngFor="let a of articles()" class="list-group-item d-flex justify-content-between align-items-center">
-              <span>{{ a.name }} <code class="ms-2">{{ a.id }}</code></span>
-              <button class="btn btn-sm btn-outline-danger" (click)="removeArticle(a)">Delete</button>
-            </li>
-          </ul>
-          <ng-template #noArticles><p class="text-secondary m-0">No articles yet.</p></ng-template>
+          </div>
+          <p *ngIf="!devices().length" class="text-secondary m-0">No devices yet.</p>
         </div>
       </section>
 
@@ -116,15 +188,9 @@ import { ApiService, Article, Device, ProvisionResult } from '../api.service';
         <div class="card-header fw-semibold">Admin users</div>
         <div class="card-body">
           <form class="row g-2 mb-3" (ngSubmit)="addAdmin()">
-            <div class="col-sm-4">
-              <input class="form-control" placeholder="Username" [(ngModel)]="newAdminUser" name="au" />
-            </div>
-            <div class="col-sm-5">
-              <input class="form-control" type="password" placeholder="Password (min 8)" [(ngModel)]="newAdminPass" name="ap" />
-            </div>
-            <div class="col-sm-3 d-grid">
-              <button class="btn btn-primary" [disabled]="busy() || !newAdminUser || newAdminPass.length < 8">Add</button>
-            </div>
+            <div class="col-sm-4"><input class="form-control" placeholder="Username" [(ngModel)]="newAdminUser" name="au" /></div>
+            <div class="col-sm-5"><input class="form-control" type="password" placeholder="Password (min 8)" [(ngModel)]="newAdminPass" name="ap" /></div>
+            <div class="col-sm-3 d-grid"><button class="btn btn-primary" [disabled]="busy() || !newAdminUser || newAdminPass.length < 8">Add</button></div>
           </form>
           <ul class="list-group">
             <li *ngFor="let name of admins()" class="list-group-item d-flex justify-content-between align-items-center">
@@ -147,15 +213,20 @@ export class AdminComponent implements OnInit {
   loginUser = '';
   loginPass = '';
 
+  account = signal<Account | null>(null);
+  categories = signal<CatalogCategory[]>([]);
+  presets = signal<Preset[]>([]);
   devices = signal<Device[]>([]);
-  articles = signal<Article[]>([]);
   admins = signal<string[]>([]);
   lastProvisioned = signal<ProvisionResult | null>(null);
 
+  editor = signal<PresetEditor | null>(null);
+
+  assigning = signal<string | null>(null);
+  assignSel = new Set<string>();
+
   newMac = '';
   newLabel = '';
-  newArtId = '';
-  newArtName = '';
   newAdminUser = '';
   newAdminPass = '';
 
@@ -167,11 +238,10 @@ export class AdminComponent implements OnInit {
     this.error.set('');
     this.api.setAuth(this.loginUser, this.loginPass);
     this.busy.set(true);
-    // verify creds by loading; roll back auth on failure
-    this.api.adminListDevices().subscribe({
+    this.api.adminGetAccount().subscribe({
       next: (r) => {
         this.busy.set(false);
-        this.devices.set(r.devices);
+        this.account.set(r.account);
         this.loginPass = '';
         this.refresh();
       },
@@ -185,16 +255,72 @@ export class AdminComponent implements OnInit {
 
   logout(): void {
     this.api.clearAuth();
+    this.account.set(null);
+    this.presets.set([]);
     this.devices.set([]);
-    this.articles.set([]);
     this.admins.set([]);
+    this.editor.set(null);
   }
 
   refresh(): void {
+    this.api.adminGetAccount().subscribe({ next: (r) => this.account.set(r.account), error: (e) => this.onErr(e) });
+    this.api.adminGetCatalog().subscribe({ next: (r) => this.categories.set(r.categories), error: (e) => this.onErr(e) });
+    this.api.adminListPresets().subscribe({ next: (r) => this.presets.set(r.presets), error: (e) => this.onErr(e) });
     this.api.adminListDevices().subscribe({ next: (r) => this.devices.set(r.devices), error: (e) => this.onErr(e) });
-    this.api.adminListArticles().subscribe({ next: (r) => this.articles.set(r.articles), error: (e) => this.onErr(e) });
     this.api.adminListAdmins().subscribe({ next: (r) => this.admins.set(r.admins), error: (e) => this.onErr(e) });
   }
+
+  // ---- presets ----
+
+  newPreset(): void {
+    this.editor.set({
+      id: null,
+      name: '',
+      mode: 'fixed',
+      roulettePercent: 50,
+      randomCategory: '',
+      selected: new Set<string>(),
+    });
+  }
+
+  editPreset(p: Preset): void {
+    this.editor.set({
+      id: p.id,
+      name: p.name,
+      mode: p.orderMode.mode,
+      roulettePercent: p.orderMode.roulette_percent ?? 50,
+      randomCategory: p.orderMode.random_category ?? '',
+      selected: new Set(p.articles.map((a) => a._id)),
+    });
+  }
+
+  toggleArticle(ed: PresetEditor, id: string): void {
+    if (ed.selected.has(id)) ed.selected.delete(id);
+    else ed.selected.add(id);
+  }
+
+  savePreset(ed: PresetEditor): void {
+    const orderMode: PresetBody['orderMode'] = { mode: ed.mode };
+    if (ed.mode === 'russian_roulette') orderMode.roulette_percent = Number(ed.roulettePercent);
+    if (ed.mode === 'random_article' && ed.randomCategory) orderMode.random_category = ed.randomCategory;
+    const body: PresetBody = {
+      name: ed.name,
+      orderMode,
+      articles: [...ed.selected].map((_id) => ({ _id, combinedWith: [] })),
+    };
+    const req = ed.id ? this.api.adminUpdatePreset(ed.id, body) : this.api.adminCreatePreset(body);
+    this.run(req, () => {
+      this.editor.set(null);
+      this.refresh();
+    });
+  }
+
+  removePreset(p: Preset): void {
+    if (!confirm(`Delete preset "${p.name}"?`)) return;
+    this.run(this.api.adminDeletePreset(p.id), () => this.refresh());
+  }
+
+  // ---- devices ----
 
   provision(): void {
     this.run(this.api.adminCreateDevice(this.newMac, this.newLabel), (res) => {
@@ -210,17 +336,28 @@ export class AdminComponent implements OnInit {
     this.run(this.api.adminDeleteDevice(d.topicId), () => this.refresh());
   }
 
-  addArticle(): void {
-    this.run(this.api.adminCreateArticle(this.newArtId, this.newArtName), () => {
-      this.newArtId = '';
-      this.newArtName = '';
+  toggleAssign(d: Device): void {
+    if (this.assigning() === d.topicId) {
+      this.assigning.set(null);
+      return;
+    }
+    this.assignSel = new Set(d.assignedPresetIds);
+    this.assigning.set(d.topicId);
+  }
+
+  toggleAssignPreset(id: string): void {
+    if (this.assignSel.has(id)) this.assignSel.delete(id);
+    else this.assignSel.add(id);
+  }
+
+  saveAssign(d: Device): void {
+    this.run(this.api.adminSetDevicePresets(d.topicId, [...this.assignSel]), () => {
+      this.assigning.set(null);
       this.refresh();
     });
   }
 
-  removeArticle(a: Article): void {
-    this.run(this.api.adminDeleteArticle(a.id), () => this.refresh());
-  }
+  // ---- admins ----
 
   addAdmin(): void {
     this.run(this.api.adminCreateAdmin(this.newAdminUser, this.newAdminPass), () => {
@@ -234,6 +371,8 @@ export class AdminComponent implements OnInit {
     if (!confirm(`Delete admin ${name}?`)) return;
     this.run(this.api.adminDeleteAdmin(name), () => this.refresh());
   }
+
+  // ---- helpers ----
 
   guestUrl(topicId: string): string {
     return `${location.origin}/g/${topicId}`;

@@ -3,11 +3,13 @@ import { Request } from "express";
 export interface AdminRecord {
   username: string;
   passwordHash: string; // opaque, produced by password.ts
+  accountId: string;
   createdAt: number;
 }
 
 export interface AdminIdentity {
   username: string;
+  accountId: string;
 }
 
 /**
@@ -20,7 +22,7 @@ export interface CredentialStore {
   create(rec: AdminRecord): Promise<AdminRecord>;
   delete(username: string): Promise<boolean>;
   count(): Promise<number>;
-  listUsernames(): Promise<string[]>;
+  listUsernamesByAccount(accountId: string): Promise<string[]>;
 }
 
 /**

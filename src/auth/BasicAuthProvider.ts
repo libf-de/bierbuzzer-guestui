@@ -31,6 +31,6 @@ export class BasicAuthProvider implements AuthProvider {
     const ok = await verifyPassword(password, hash);
 
     if (!admin || !ok) return null;
-    return { username: admin.username };
+    return { username: admin.username, accountId: admin.accountId };
   }
 }

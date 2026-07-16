@@ -1,5 +1,5 @@
 import { NextFunction, Request, RequestHandler, Response } from "express";
-import { ZodSchema } from "zod";
+import { z, ZodTypeAny } from "zod";
 
 /** Wrap an async handler so thrown/rejected errors reach the error middleware. */
 export function asyncHandler(
@@ -20,7 +20,7 @@ export class HttpError extends Error {
 }
 
 /** Parse+validate a request body with a zod schema, throwing HttpError 400. */
-export function parseBody<T>(schema: ZodSchema<T>, body: unknown): T {
+export function parseBody<S extends ZodTypeAny>(schema: S, body: unknown): z.infer<S> {
   const result = schema.safeParse(body);
   if (!result.success) {
     const msg = result.error.issues

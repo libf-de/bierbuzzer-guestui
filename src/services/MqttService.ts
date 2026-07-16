@@ -1,14 +1,11 @@
 import mqtt, { MqttClient } from "mqtt";
-
-export interface DeviceState {
-  articleId: string;
-  at: number;
-  source: "ack" | "status";
-}
+import { AckState, DeviceConfig, DeviceStatus, parseAck, parseStatus } from "./deviceConfig";
 
 export interface SetResult {
+  /** true if the device acked this exact rev before the timeout */
   confirmed: boolean;
-  state: DeviceState | null;
+  /** latest known effective config (from config/ack) */
+  ack: AckState | null;
 }
 
 interface MqttServiceOptions {
@@ -24,20 +21,24 @@ const STATUS_WILDCARD = "devices/+/status";
 
 /**
  * Owns the server's MQTT connection. Only the server publishes to device
- * config topics. Current article state is not persisted — it is tracked in
- * memory from device-published ack/status messages (live from device).
+ * config topics (config/set, retained QoS1 per MQTT.md). Effective config and
+ * availability are not persisted — they are tracked in memory from device
+ * config/ack and status messages.
  */
 export class MqttService {
   private client: MqttClient | null = null;
   private readonly opts: MqttServiceOptions;
 
-  /** Last known state per device, learned from ack/status. */
-  private readonly states = new Map<string, DeviceState>();
+  /** Last config/ack per device (= current effective config). */
+  private readonly acks = new Map<string, AckState>();
+  /** Last status per device (online/offline + telemetry). */
+  private readonly statuses = new Map<string, DeviceStatus>();
   /** In-flight config/set calls awaiting an ack, keyed by topicId. */
   private readonly pending = new Map<
     string,
-    { articleId: string; resolve: (r: SetResult) => void; timer: NodeJS.Timeout }
+    { rev: number; resolve: (r: SetResult) => void; timer: NodeJS.Timeout }
   >();
+  private revSeq = 0;
 
   constructor(opts: MqttServiceOptions) {
     this.opts = opts;
@@ -51,7 +52,6 @@ export class MqttService {
         reconnectPeriod: 2000,
         clean: true,
       });
-
       let settled = false;
 
       client.on("connect", () => {
@@ -84,43 +84,46 @@ export class MqttService {
   }
 
   private onMessage(topic: string, payload: Buffer): void {
-    // devices/<topicId>/config/ack   or   devices/<topicId>/status
     const parts = topic.split("/");
     if (parts.length < 3 || parts[0] !== "devices") return;
     const topicId = parts[1];
     const kind = parts.slice(2).join("/");
-    const source: DeviceState["source"] =
-      kind === "config/ack" ? "ack" : kind === "status" ? "status" : null!;
-    if (!source) return;
+    const now = Date.now();
 
-    const articleId = parseArticleId(payload);
-    if (articleId == null) return;
-
-    const state: DeviceState = { articleId, at: Date.now(), source };
-    this.states.set(topicId, state);
-
-    const waiter = this.pending.get(topicId);
-    if (waiter && (source === "ack" || waiter.articleId === articleId)) {
-      clearTimeout(waiter.timer);
-      this.pending.delete(topicId);
-      waiter.resolve({ confirmed: true, state });
+    if (kind === "config/ack") {
+      const ack = parseAck(payload, now);
+      if (!ack) return;
+      this.acks.set(topicId, ack);
+      const waiter = this.pending.get(topicId);
+      if (waiter && String(ack.rev) === String(waiter.rev)) {
+        clearTimeout(waiter.timer);
+        this.pending.delete(topicId);
+        waiter.resolve({ confirmed: true, ack });
+      }
+    } else if (kind === "status") {
+      const status = parseStatus(payload, now);
+      if (status) this.statuses.set(topicId, status);
     }
   }
 
-  /** Last known state for a device, or null if none seen yet. */
-  getState(topicId: string): DeviceState | null {
-    return this.states.get(topicId) ?? null;
+  getAck(topicId: string): AckState | null {
+    return this.acks.get(topicId) ?? null;
+  }
+
+  getStatus(topicId: string): DeviceStatus | null {
+    return this.statuses.get(topicId) ?? null;
   }
 
   /**
-   * Publish a new article to the device (retained, QoS1) and wait for the
-   * device to ack. Resolves confirmed:false on ack timeout — the config is
-   * still retained by the broker and will reach the device on reconnect.
+   * Publish a config/set (retained, QoS1) with a fresh rev and wait for the
+   * device to ack that rev. Resolves confirmed:false on timeout — the config
+   * is retained and reaches the device on reconnect.
    */
-  setArticle(topicId: string, articleId: string): Promise<SetResult> {
+  setConfig(topicId: string, config: DeviceConfig): Promise<SetResult> {
     if (!this.client) throw new Error("MQTT not connected");
     const client = this.client;
-    const payload = JSON.stringify({ articleId });
+    const rev = ++this.revSeq;
+    const payload = JSON.stringify({ rev, ...config });
 
     return new Promise<SetResult>((resolve, reject) => {
       client.publish(CONFIG_SET(topicId), payload, { qos: 1, retain: true }, (err) => {
@@ -128,34 +131,34 @@ export class MqttService {
           reject(err);
           return;
         }
-        // Replace any prior waiter for this device (last write wins).
+        // Supersede any prior waiter for this device (last write wins).
         const prev = this.pending.get(topicId);
         if (prev) {
           clearTimeout(prev.timer);
-          prev.resolve({ confirmed: false, state: this.getState(topicId) });
+          prev.resolve({ confirmed: false, ack: this.getAck(topicId) });
         }
         const timer = setTimeout(() => {
           this.pending.delete(topicId);
-          resolve({ confirmed: false, state: this.getState(topicId) });
+          resolve({ confirmed: false, ack: this.getAck(topicId) });
         }, this.opts.ackTimeoutMs);
-        this.pending.set(topicId, { articleId, resolve, timer });
+        this.pending.set(topicId, { rev, resolve, timer });
       });
     });
   }
 
-  /** Clear retained config for a removed device and drop cached state. */
+  /** Clear retained config + cached state for a removed device. */
   clearDevice(topicId: string): Promise<void> {
-    this.states.delete(topicId);
+    this.acks.delete(topicId);
+    this.statuses.delete(topicId);
     const waiter = this.pending.get(topicId);
     if (waiter) {
       clearTimeout(waiter.timer);
       this.pending.delete(topicId);
-      waiter.resolve({ confirmed: false, state: null });
+      waiter.resolve({ confirmed: false, ack: null });
     }
     if (!this.client) return Promise.resolve();
     const client = this.client;
     return new Promise((resolve, reject) => {
-      // Empty retained payload deletes the retained message.
       client.publish(CONFIG_SET(topicId), "", { qos: 1, retain: true }, (err) =>
         err ? reject(err) : resolve(),
       );
@@ -169,18 +172,5 @@ export class MqttService {
       if (!this.client) return resolve();
       this.client.end(false, {}, () => resolve());
     });
-  }
-}
-
-function parseArticleId(payload: Buffer): string | null {
-  const text = payload.toString("utf8").trim();
-  if (text === "") return null;
-  try {
-    const obj = JSON.parse(text);
-    if (obj && typeof obj.articleId === "string") return obj.articleId;
-    return null;
-  } catch {
-    // tolerate a bare string payload
-    return text;
   }
 }

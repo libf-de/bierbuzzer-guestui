@@ -1,34 +1,56 @@
 import path from "path";
 import fs from "fs";
 import Datastore from "nedb-promises";
-import { ArticleRecord, Database, DeviceRecord } from "./types";
+import {
+  AccountRecord,
+  Database,
+  DeviceRecord,
+  PresetPatch,
+  PresetRecord,
+} from "./types";
 
 export interface NeDbPaths {
+  accountsPath: string;
   devicesPath: string;
-  articlesPath: string;
+  presetsPath: string;
 }
 
-/**
- * NeDB-backed implementation of the Database interface.
- * Holds two independent datastores (devices, articles) — one class, two DBs.
- */
+/** NeDB-backed Database: one datastore each for accounts, devices, presets. */
 export class NeDbDatabase implements Database {
+  private readonly accounts: Datastore<AccountRecord>;
   private readonly devices: Datastore<DeviceRecord>;
-  private readonly articles: Datastore<ArticleRecord>;
+  private readonly presets: Datastore<PresetRecord>;
 
   constructor(paths: NeDbPaths) {
-    ensureDir(paths.devicesPath);
-    ensureDir(paths.articlesPath);
+    for (const p of [paths.accountsPath, paths.devicesPath, paths.presetsPath]) ensureDir(p);
+    this.accounts = Datastore.create({ filename: paths.accountsPath, autoload: false });
     this.devices = Datastore.create({ filename: paths.devicesPath, autoload: false });
-    this.articles = Datastore.create({ filename: paths.articlesPath, autoload: false });
+    this.presets = Datastore.create({ filename: paths.presetsPath, autoload: false });
   }
 
   async init(): Promise<void> {
+    await this.accounts.load();
     await this.devices.load();
-    await this.articles.load();
+    await this.presets.load();
+    await this.accounts.ensureIndex({ fieldName: "id", unique: true });
     await this.devices.ensureIndex({ fieldName: "topicId", unique: true });
     await this.devices.ensureIndex({ fieldName: "mac", unique: true });
-    await this.articles.ensureIndex({ fieldName: "id", unique: true });
+    await this.presets.ensureIndex({ fieldName: "id", unique: true });
+  }
+
+  // --- accounts ---
+
+  async createAccount(rec: AccountRecord): Promise<AccountRecord> {
+    return strip(await this.accounts.insert(rec));
+  }
+
+  async getAccount(id: string): Promise<AccountRecord | null> {
+    const doc = await this.accounts.findOne({ id });
+    return doc ? strip(doc) : null;
+  }
+
+  async countAccounts(): Promise<number> {
+    return this.accounts.count({});
   }
 
   // --- devices ---
@@ -47,8 +69,8 @@ export class NeDbDatabase implements Database {
     return doc ? strip(doc) : null;
   }
 
-  async listDevices(): Promise<DeviceRecord[]> {
-    const docs = await this.devices.find({}).sort({ createdAt: 1 });
+  async listDevicesByAccount(accountId: string): Promise<DeviceRecord[]> {
+    const docs = await this.devices.find({ accountId }).sort({ createdAt: 1 });
     return docs.map(strip);
   }
 
@@ -57,24 +79,49 @@ export class NeDbDatabase implements Database {
     return n > 0;
   }
 
-  // --- articles ---
-
-  async createArticle(rec: ArticleRecord): Promise<ArticleRecord> {
-    return strip(await this.articles.insert(rec));
+  async setDevicePresets(topicId: string, presetIds: string[]): Promise<DeviceRecord | null> {
+    const n = await this.devices.update(
+      { topicId },
+      { $set: { assignedPresetIds: presetIds } },
+      {},
+    );
+    if (!n) return null;
+    return this.getDeviceByTopicId(topicId);
   }
 
-  async getArticle(id: string): Promise<ArticleRecord | null> {
-    const doc = await this.articles.findOne({ id });
+  // --- presets ---
+
+  async createPreset(rec: PresetRecord): Promise<PresetRecord> {
+    return strip(await this.presets.insert(rec));
+  }
+
+  async getPreset(id: string): Promise<PresetRecord | null> {
+    const doc = await this.presets.findOne({ id });
     return doc ? strip(doc) : null;
   }
 
-  async listArticles(): Promise<ArticleRecord[]> {
-    const docs = await this.articles.find({}).sort({ createdAt: 1 });
+  async getPresetsByIds(ids: string[]): Promise<PresetRecord[]> {
+    const docs = await this.presets.find({ id: { $in: ids } });
     return docs.map(strip);
   }
 
-  async deleteArticle(id: string): Promise<boolean> {
-    const n = await this.articles.remove({ id }, { multi: false });
+  async listPresetsByAccount(accountId: string): Promise<PresetRecord[]> {
+    const docs = await this.presets.find({ accountId }).sort({ createdAt: 1 });
+    return docs.map(strip);
+  }
+
+  async updatePreset(id: string, patch: PresetPatch): Promise<PresetRecord | null> {
+    const n = await this.presets.update(
+      { id },
+      { $set: { name: patch.name, orderMode: patch.orderMode, articles: patch.articles } },
+      {},
+    );
+    if (!n) return null;
+    return this.getPreset(id);
+  }
+
+  async deletePreset(id: string): Promise<boolean> {
+    const n = await this.presets.remove({ id }, { multi: false });
     return n > 0;
   }
 }

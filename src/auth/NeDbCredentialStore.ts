@@ -36,8 +36,8 @@ export class NeDbCredentialStore implements CredentialStore {
     return this.db.count({});
   }
 
-  async listUsernames(): Promise<string[]> {
-    const docs = await this.db.find({}).sort({ createdAt: 1 });
+  async listUsernamesByAccount(accountId: string): Promise<string[]> {
+    const docs = await this.db.find({ accountId }).sort({ createdAt: 1 });
     return docs.map((d) => d.username);
   }
 }

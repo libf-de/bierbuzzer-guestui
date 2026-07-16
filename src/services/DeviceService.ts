@@ -24,7 +24,7 @@ export class DeviceService {
     private readonly secret: string,
   ) {}
 
-  async provision(rawMac: string, label?: string): Promise<ProvisionResult> {
+  async provision(rawMac: string, accountId: string, label?: string): Promise<ProvisionResult> {
     const mac = normalizeMac(rawMac);
 
     if (await this.db.getDeviceByMac(mac)) {
@@ -43,6 +43,8 @@ export class DeviceService {
         username: creds.username,
         mac,
         label,
+        accountId,
+        assignedPresetIds: [],
         createdAt: Date.now(),
       });
     } catch (err) {
@@ -63,8 +65,8 @@ export class DeviceService {
     await this.db.deleteDevice(topicId);
   }
 
-  listDevices(): Promise<DeviceRecord[]> {
-    return this.db.listDevices();
+  listDevices(accountId: string): Promise<DeviceRecord[]> {
+    return this.db.listDevicesByAccount(accountId);
   }
 
   getDevice(topicId: string): Promise<DeviceRecord | null> {

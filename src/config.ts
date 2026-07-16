@@ -47,14 +47,17 @@ export const config = {
   },
 
   db: {
+    accountsPath: optional("DB_ACCOUNTS_PATH", "data/accounts.db"),
     devicesPath: optional("DB_DEVICES_PATH", "data/devices.db"),
-    articlesPath: optional("DB_ARTICLES_PATH", "data/articles.db"),
+    presetsPath: optional("DB_PRESETS_PATH", "data/presets.db"),
     adminsPath: optional("DB_ADMINS_PATH", "data/admins.db"),
   },
 
   adminBootstrap: {
     user: process.env.ADMIN_BOOTSTRAP_USER?.trim() || null,
     pass: process.env.ADMIN_BOOTSTRAP_PASS?.trim() || null,
+    // account the bootstrap admin is created under
+    accountName: optional("ADMIN_BOOTSTRAP_ACCOUNT", "default"),
   },
 } as const;
 

@@ -2,10 +2,36 @@ import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
-export interface Article {
-  id: string;
+export type OrderModeName = 'fixed' | 'random_article' | 'russian_roulette';
+
+export interface OrderMode {
+  mode: OrderModeName;
+  roulette_percent?: number;
+  random_category?: string;
+}
+
+export interface ArticleRef {
+  _id: string;
+  combinedWith: string[];
+}
+
+export interface CatalogArticle {
+  _id: string;
   name: string;
-  createdAt: number;
+}
+
+export interface CatalogCategory {
+  name: string;
+  articles: CatalogArticle[];
+}
+
+export interface Preset {
+  id: string;
+  accountId?: string;
+  name: string;
+  orderMode: OrderMode;
+  articles: ArticleRef[];
+  createdAt?: number;
 }
 
 export interface Device {
@@ -13,30 +39,64 @@ export interface Device {
   username: string;
   mac: string;
   label?: string;
+  accountId: string;
+  assignedPresetIds: string[];
   createdAt: number;
 }
 
-export interface DeviceState {
-  articleId: string;
+export interface DeviceStatus {
+  state: 'online' | 'offline';
+  ip?: string;
+  battery_mv?: number;
+  rssi?: number;
   at: number;
-  source: 'ack' | 'status';
+}
+
+export interface AckState {
+  rev?: number | string;
+  ok: boolean;
+  orderMode: OrderMode | null;
+  articles: ArticleRef[] | null;
+  rejected: Record<string, string>;
+  at: number;
+}
+
+export interface GuestPreset {
+  id: string;
+  name: string;
+  orderMode: OrderMode;
+  articles: ArticleRef[];
 }
 
 export interface GuestDeviceView {
   topicId: string;
   label: string | null;
-  currentArticle: DeviceState | null;
+  presets: GuestPreset[];
+  applied: AckState | null;
+  status: DeviceStatus | null;
 }
 
-export interface SetArticleResult {
-  articleId: string;
+export interface SelectResult {
+  presetId: string;
   confirmed: boolean;
-  state: DeviceState | null;
+  ack: AckState | null;
 }
 
 export interface ProvisionResult {
   device: Device;
   credentials: { username: string; password: string };
+}
+
+export interface Account {
+  id: string;
+  name: string;
+  createdAt: number;
+}
+
+export interface PresetBody {
+  name: string;
+  orderMode: OrderMode;
+  articles: ArticleRef[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -49,18 +109,12 @@ export class ApiService {
 
   // ---- guest ----
 
-  listArticles(): Observable<{ articles: Article[] }> {
-    return this.http.get<{ articles: Article[] }>(`${this.base}/articles`);
-  }
-
   getDevice(topicId: string): Observable<GuestDeviceView> {
     return this.http.get<GuestDeviceView>(`${this.base}/devices/${topicId}`);
   }
 
-  setArticle(topicId: string, articleId: string): Observable<SetArticleResult> {
-    return this.http.post<SetArticleResult>(`${this.base}/devices/${topicId}/article`, {
-      articleId,
-    });
+  selectPreset(topicId: string, presetId: string): Observable<SelectResult> {
+    return this.http.post<SelectResult>(`${this.base}/devices/${topicId}/select`, { presetId });
   }
 
   // ---- admin auth ----
@@ -76,73 +130,79 @@ export class ApiService {
     sessionStorage.removeItem('adminAuth');
   }
 
-  private authHeaders(): HttpHeaders {
-    return new HttpHeaders({ Authorization: `Basic ${this.authToken() ?? ''}` });
+  private opts(): { headers: HttpHeaders } {
+    return { headers: new HttpHeaders({ Authorization: `Basic ${this.authToken() ?? ''}` }) };
+  }
+
+  // ---- admin: account + catalog ----
+
+  adminGetAccount(): Observable<{ account: Account | null }> {
+    return this.http.get<{ account: Account | null }>(`${this.base}/admin/account`, this.opts());
+  }
+
+  adminGetCatalog(): Observable<{ categories: CatalogCategory[] }> {
+    return this.http.get<{ categories: CatalogCategory[] }>(`${this.base}/admin/catalog`, this.opts());
+  }
+
+  // ---- admin: presets ----
+
+  adminListPresets(): Observable<{ presets: Preset[] }> {
+    return this.http.get<{ presets: Preset[] }>(`${this.base}/admin/presets`, this.opts());
+  }
+
+  adminCreatePreset(body: PresetBody): Observable<{ preset: Preset }> {
+    return this.http.post<{ preset: Preset }>(`${this.base}/admin/presets`, body, this.opts());
+  }
+
+  adminUpdatePreset(id: string, body: PresetBody): Observable<{ preset: Preset }> {
+    return this.http.put<{ preset: Preset }>(`${this.base}/admin/presets/${id}`, body, this.opts());
+  }
+
+  adminDeletePreset(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/admin/presets/${id}`, this.opts());
   }
 
   // ---- admin: devices ----
 
   adminListDevices(): Observable<{ devices: Device[] }> {
-    return this.http.get<{ devices: Device[] }>(`${this.base}/admin/devices`, {
-      headers: this.authHeaders(),
-    });
+    return this.http.get<{ devices: Device[] }>(`${this.base}/admin/devices`, this.opts());
   }
 
   adminCreateDevice(mac: string, label?: string): Observable<ProvisionResult> {
     return this.http.post<ProvisionResult>(
       `${this.base}/admin/devices`,
       { mac, label: label || undefined },
-      { headers: this.authHeaders() },
+      this.opts(),
     );
   }
 
   adminDeleteDevice(topicId: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/admin/devices/${topicId}`, {
-      headers: this.authHeaders(),
-    });
+    return this.http.delete<void>(`${this.base}/admin/devices/${topicId}`, this.opts());
   }
 
-  // ---- admin: articles ----
-
-  adminListArticles(): Observable<{ articles: Article[] }> {
-    return this.http.get<{ articles: Article[] }>(`${this.base}/admin/articles`, {
-      headers: this.authHeaders(),
-    });
-  }
-
-  adminCreateArticle(id: string, name: string): Observable<{ article: Article }> {
-    return this.http.post<{ article: Article }>(
-      `${this.base}/admin/articles`,
-      { id, name },
-      { headers: this.authHeaders() },
+  adminSetDevicePresets(topicId: string, presetIds: string[]): Observable<{ device: Device }> {
+    return this.http.put<{ device: Device }>(
+      `${this.base}/admin/devices/${topicId}/presets`,
+      { presetIds },
+      this.opts(),
     );
-  }
-
-  adminDeleteArticle(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/admin/articles/${id}`, {
-      headers: this.authHeaders(),
-    });
   }
 
   // ---- admin: admins ----
 
   adminListAdmins(): Observable<{ admins: string[] }> {
-    return this.http.get<{ admins: string[] }>(`${this.base}/admin/admins`, {
-      headers: this.authHeaders(),
-    });
+    return this.http.get<{ admins: string[] }>(`${this.base}/admin/admins`, this.opts());
   }
 
   adminCreateAdmin(username: string, password: string): Observable<{ username: string }> {
     return this.http.post<{ username: string }>(
       `${this.base}/admin/admins`,
       { username, password },
-      { headers: this.authHeaders() },
+      this.opts(),
     );
   }
 
   adminDeleteAdmin(username: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/admin/admins/${username}`, {
-      headers: this.authHeaders(),
-    });
+    return this.http.delete<void>(`${this.base}/admin/admins/${username}`, this.opts());
   }
 }

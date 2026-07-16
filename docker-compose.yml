@@ -18,8 +18,9 @@ services:
       # both the server client and the admin provisioning connection use this
       MQTT_URL: mqtt://mosquitto:1883
       # nedb files land on the named volume
+      DB_ACCOUNTS_PATH: /app/data/accounts.db
       DB_DEVICES_PATH: /app/data/devices.db
-      DB_ARTICLES_PATH: /app/data/articles.db
+      DB_PRESETS_PATH: /app/data/presets.db
       DB_ADMINS_PATH: /app/data/admins.db
     volumes:
       - backend_data:/app/data
