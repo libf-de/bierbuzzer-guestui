@@ -58,6 +58,13 @@ export const config = {
     cacheTtlMs: num("AUTH_CACHE_TTL_MS", 60000),
     timeoutMs: num("AUTH_TIMEOUT_MS", 8000),
   },
+
+  // Article/category catalog source for building presets.
+  catalog: {
+    source: optional("CATALOG_SOURCE", "cloud") as "cloud" | "mock",
+    baseUrl: optional("CLOUD_API_URL", "https://api.alleskasse.de"),
+    timeoutMs: num("CLOUD_TIMEOUT_MS", 10000),
+  },
 } as const;
 
 export type Config = typeof config;

@@ -63,8 +63,9 @@ export function adminRoutes(deps: AdminDeps): Router {
 
   router.get(
     "/catalog",
-    asyncHandler(async (_req, res) => {
-      res.json({ categories: await deps.catalog.listCategories() });
+    asyncHandler(async (req, res) => {
+      // accountId == apiKey used to fetch the account's cloud catalog.
+      res.json({ categories: await deps.catalog.listCategories(accountId(req)) });
     }),
   );
 

@@ -8,7 +8,7 @@ import { ExternalAuthProvider } from "./auth/externalAuth";
 import { MqttService } from "./services/MqttService";
 import { MqttProvisioningService } from "./services/MqttProvisioningService";
 import { DeviceService } from "./services/DeviceService";
-import { MockCatalogSource } from "./services/CatalogSource";
+import { CloudCatalogSource, MockCatalogSource } from "./services/CatalogSource";
 import { guestRoutes } from "./routes/guest";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/authRoutes";
@@ -53,7 +53,11 @@ async function main(): Promise<void> {
     cacheTtlMs: config.externalAuth.cacheTtlMs,
     timeoutMs: config.externalAuth.timeoutMs,
   });
-  const catalog = new MockCatalogSource();
+  const catalog =
+    config.catalog.source === "mock"
+      ? new MockCatalogSource()
+      : new CloudCatalogSource({ baseUrl: config.catalog.baseUrl, timeoutMs: config.catalog.timeoutMs });
+  console.log(`[catalog] source: ${config.catalog.source}`);
 
   // --- HTTP ---
   const app = express();
