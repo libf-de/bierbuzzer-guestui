@@ -87,12 +87,6 @@ export interface ProvisionResult {
   credentials: { username: string; password: string };
 }
 
-export interface Account {
-  id: string;
-  name: string;
-  createdAt: number;
-}
-
 export interface PresetBody {
   name: string;
   orderMode: OrderMode;
@@ -104,7 +98,10 @@ export class ApiService {
   private http = inject(HttpClient);
   private base = '/api';
 
-  /** Basic-auth token (base64 "user:pass"), persisted for the tab session. */
+  /**
+   * External apiKey (== accountId), used as a Bearer token, persisted for the
+   * tab session. Admin surface ONLY — never exposed to the guest UI/API.
+   */
   readonly authToken = signal<string | null>(sessionStorage.getItem('adminAuth'));
 
   // ---- guest ----
@@ -117,12 +114,16 @@ export class ApiService {
     return this.http.post<SelectResult>(`${this.base}/devices/${topicId}/select`, { presetId });
   }
 
-  // ---- admin auth ----
+  // ---- admin auth (external) ----
 
-  setAuth(username: string, password: string): void {
-    const token = btoa(`${username}:${password}`);
-    this.authToken.set(token);
-    sessionStorage.setItem('adminAuth', token);
+  /** Exchange credentials for an apiKey via the backend's external-auth proxy. */
+  login(username: string, password: string): Observable<{ apiKey: string }> {
+    return this.http.post<{ apiKey: string }>(`${this.base}/auth/login`, { username, password });
+  }
+
+  setToken(apiKey: string): void {
+    this.authToken.set(apiKey);
+    sessionStorage.setItem('adminAuth', apiKey);
   }
 
   clearAuth(): void {
@@ -131,13 +132,14 @@ export class ApiService {
   }
 
   private opts(): { headers: HttpHeaders } {
-    return { headers: new HttpHeaders({ Authorization: `Basic ${this.authToken() ?? ''}` }) };
+    return { headers: new HttpHeaders({ Authorization: `Bearer ${this.authToken() ?? ''}` }) };
   }
 
   // ---- admin: account + catalog ----
 
-  adminGetAccount(): Observable<{ account: Account | null }> {
-    return this.http.get<{ account: Account | null }>(`${this.base}/admin/account`, this.opts());
+  /** Account name (from external checkLogin). Never returns the apiKey. */
+  adminGetAccount(): Observable<{ name: string | null }> {
+    return this.http.get<{ name: string | null }>(`${this.base}/admin/account`, this.opts());
   }
 
   adminGetCatalog(): Observable<{ categories: CatalogCategory[] }> {
@@ -186,23 +188,5 @@ export class ApiService {
       { presetIds },
       this.opts(),
     );
-  }
-
-  // ---- admin: admins ----
-
-  adminListAdmins(): Observable<{ admins: string[] }> {
-    return this.http.get<{ admins: string[] }>(`${this.base}/admin/admins`, this.opts());
-  }
-
-  adminCreateAdmin(username: string, password: string): Observable<{ username: string }> {
-    return this.http.post<{ username: string }>(
-      `${this.base}/admin/admins`,
-      { username, password },
-      this.opts(),
-    );
-  }
-
-  adminDeleteAdmin(username: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/admin/admins/${username}`, this.opts());
   }
 }

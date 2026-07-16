@@ -9,9 +9,8 @@ import {
   assignPresetsSchema,
   presetSchema,
 } from "../services/deviceConfig";
-import { AuthProvider, CredentialStore } from "../auth/types";
+import { AuthProvider } from "../auth/types";
 import { requireAdmin } from "../auth/middleware";
-import { hashPassword } from "../auth/password";
 import { asyncHandler, HttpError, parseBody } from "../http/helpers";
 
 const macSchema = z.object({
@@ -19,16 +18,10 @@ const macSchema = z.object({
   label: z.string().min(1).optional(),
 });
 
-const adminSchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(8),
-});
-
 export interface AdminDeps {
   db: Database;
   devices: DeviceService;
   auth: AuthProvider;
-  credentials: CredentialStore;
   catalog: CatalogSource;
 }
 
@@ -57,13 +50,14 @@ export function adminRoutes(deps: AdminDeps): Router {
     }
   };
 
-  // --- account + catalog ---
+  // --- account (identity readback, used to validate the token) + catalog ---
 
   router.get(
     "/account",
     asyncHandler(async (req, res) => {
-      const account = await deps.db.getAccount(accountId(req));
-      res.json({ account });
+      accountId(req); // assert authenticated
+      // Admin surface only. Returns the account name — never the apiKey.
+      res.json({ name: req.admin?.name ?? null });
     }),
   );
 
@@ -167,49 +161,6 @@ export function adminRoutes(deps: AdminDeps): Router {
 
       const device = await deps.db.setDevicePresets(req.params.topicId, presetIds);
       res.json({ device });
-    }),
-  );
-
-  // --- admin users (within the account) ---
-
-  router.get(
-    "/admins",
-    asyncHandler(async (req, res) => {
-      res.json({ admins: await deps.credentials.listUsernamesByAccount(accountId(req)) });
-    }),
-  );
-
-  router.post(
-    "/admins",
-    asyncHandler(async (req, res) => {
-      const { username, password } = parseBody(adminSchema, req.body);
-      if (await deps.credentials.getByUsername(username)) {
-        throw new HttpError(409, `admin exists: ${username}`);
-      }
-      await deps.credentials.create({
-        username,
-        passwordHash: await hashPassword(password),
-        accountId: accountId(req),
-        createdAt: Date.now(),
-      });
-      res.status(201).json({ username });
-    }),
-  );
-
-  router.delete(
-    "/admins/:username",
-    asyncHandler(async (req, res) => {
-      const acc = accountId(req);
-      const target = req.params.username;
-      if (req.admin?.username === target) {
-        throw new HttpError(400, "cannot delete the currently authenticated admin");
-      }
-      const rec = await deps.credentials.getByUsername(target);
-      if (!rec || rec.accountId !== acc) throw new HttpError(404, "unknown admin");
-      const inAccount = await deps.credentials.listUsernamesByAccount(acc);
-      if (inAccount.length <= 1) throw new HttpError(400, "cannot delete the last admin");
-      await deps.credentials.delete(target);
-      res.status(204).end();
     }),
   );
 

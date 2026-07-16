@@ -27,12 +27,6 @@ export interface CatalogCategory {
 
 // ---- records ----
 
-export interface AccountRecord {
-  id: string;
-  name: string;
-  createdAt: number;
-}
-
 export interface DeviceRecord {
   topicId: string;
   username: string;
@@ -68,13 +62,12 @@ export interface PresetPatch {
  * implementing this interface. All admin-facing reads are account-scoped.
  * Effective device config is NOT stored — it is read live over MQTT.
  */
+/**
+ * accountId throughout == the external apiKey. There is no local account
+ * entity or user management — devices/presets simply reference the apiKey.
+ */
 export interface Database {
   init(): Promise<void>;
-
-  // accounts
-  createAccount(rec: AccountRecord): Promise<AccountRecord>;
-  getAccount(id: string): Promise<AccountRecord | null>;
-  countAccounts(): Promise<number>;
 
   // devices
   createDevice(rec: DeviceRecord): Promise<DeviceRecord>;

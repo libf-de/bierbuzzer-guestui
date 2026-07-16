@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Observable } from 'rxjs';
 import {
-  Account,
   ApiService,
   CatalogCategory,
   Device,
@@ -27,21 +26,24 @@ interface PresetEditor {
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <!-- login -->
+    <!-- login (external auth) -->
     <div *ngIf="!loggedIn()" class="mx-auto" style="max-width: 24rem;">
       <h1 class="h4 mb-3">Admin login</h1>
       <div *ngIf="error()" class="alert alert-danger">{{ error() }}</div>
       <form (ngSubmit)="login()">
         <input class="form-control mb-2" placeholder="Username" [(ngModel)]="loginUser" name="u" />
         <input class="form-control mb-3" type="password" placeholder="Password" [(ngModel)]="loginPass" name="p" />
-        <button class="btn btn-primary w-100" [disabled]="busy()">Sign in</button>
+        <button class="btn btn-primary w-100" [disabled]="busy() || !loginUser || !loginPass">Sign in</button>
       </form>
     </div>
 
     <!-- dashboard -->
     <div *ngIf="loggedIn()">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <h1 class="h4 m-0">Admin <small class="text-secondary fs-6">· {{ account()?.name }}</small></h1>
+        <h1 class="h4 m-0">
+          Admin
+          <small class="text-secondary fs-6" *ngIf="accountName()">· {{ accountName() }}</small>
+        </h1>
         <button class="btn btn-outline-secondary btn-sm" (click)="logout()">Sign out</button>
       </div>
 
@@ -64,7 +66,6 @@ interface PresetEditor {
           <button class="btn btn-sm btn-primary" (click)="newPreset()">New preset</button>
         </div>
         <div class="card-body">
-          <!-- editor -->
           <div *ngIf="editor() as ed" class="border rounded p-3 mb-3 bg-body-tertiary">
             <div class="row g-2 mb-2">
               <div class="col-sm-6">
@@ -136,7 +137,7 @@ interface PresetEditor {
       </section>
 
       <!-- devices -->
-      <section class="card mb-4">
+      <section class="card">
         <div class="card-header fw-semibold">Devices</div>
         <div class="card-body">
           <form class="row g-2 mb-3" (ngSubmit)="provision()">
@@ -182,24 +183,6 @@ interface PresetEditor {
           <p *ngIf="!devices().length" class="text-secondary m-0">No devices yet.</p>
         </div>
       </section>
-
-      <!-- admins -->
-      <section class="card">
-        <div class="card-header fw-semibold">Admin users</div>
-        <div class="card-body">
-          <form class="row g-2 mb-3" (ngSubmit)="addAdmin()">
-            <div class="col-sm-4"><input class="form-control" placeholder="Username" [(ngModel)]="newAdminUser" name="au" /></div>
-            <div class="col-sm-5"><input class="form-control" type="password" placeholder="Password (min 8)" [(ngModel)]="newAdminPass" name="ap" /></div>
-            <div class="col-sm-3 d-grid"><button class="btn btn-primary" [disabled]="busy() || !newAdminUser || newAdminPass.length < 8">Add</button></div>
-          </form>
-          <ul class="list-group">
-            <li *ngFor="let name of admins()" class="list-group-item d-flex justify-content-between align-items-center">
-              {{ name }}
-              <button class="btn btn-sm btn-outline-danger" (click)="removeAdmin(name)">Delete</button>
-            </li>
-          </ul>
-        </div>
-      </section>
     </div>
   `,
 })
@@ -213,11 +196,10 @@ export class AdminComponent implements OnInit {
   loginUser = '';
   loginPass = '';
 
-  account = signal<Account | null>(null);
+  accountName = signal<string | null>(null);
   categories = signal<CatalogCategory[]>([]);
   presets = signal<Preset[]>([]);
   devices = signal<Device[]>([]);
-  admins = signal<string[]>([]);
   lastProvisioned = signal<ProvisionResult | null>(null);
 
   editor = signal<PresetEditor | null>(null);
@@ -227,8 +209,6 @@ export class AdminComponent implements OnInit {
 
   newMac = '';
   newLabel = '';
-  newAdminUser = '';
-  newAdminPass = '';
 
   ngOnInit(): void {
     if (this.loggedIn()) this.refresh();
@@ -236,18 +216,16 @@ export class AdminComponent implements OnInit {
 
   login(): void {
     this.error.set('');
-    this.api.setAuth(this.loginUser, this.loginPass);
     this.busy.set(true);
-    this.api.adminGetAccount().subscribe({
+    this.api.login(this.loginUser, this.loginPass).subscribe({
       next: (r) => {
         this.busy.set(false);
-        this.account.set(r.account);
+        this.api.setToken(r.apiKey);
         this.loginPass = '';
         this.refresh();
       },
       error: (e) => {
         this.busy.set(false);
-        this.api.clearAuth();
         this.error.set(e.status === 401 ? 'Invalid credentials' : e.error?.error ?? 'Login failed');
       },
     });
@@ -255,19 +233,17 @@ export class AdminComponent implements OnInit {
 
   logout(): void {
     this.api.clearAuth();
-    this.account.set(null);
+    this.accountName.set(null);
     this.presets.set([]);
     this.devices.set([]);
-    this.admins.set([]);
     this.editor.set(null);
   }
 
   refresh(): void {
-    this.api.adminGetAccount().subscribe({ next: (r) => this.account.set(r.account), error: (e) => this.onErr(e) });
+    this.api.adminGetAccount().subscribe({ next: (r) => this.accountName.set(r.name), error: (e) => this.onErr(e) });
     this.api.adminGetCatalog().subscribe({ next: (r) => this.categories.set(r.categories), error: (e) => this.onErr(e) });
     this.api.adminListPresets().subscribe({ next: (r) => this.presets.set(r.presets), error: (e) => this.onErr(e) });
     this.api.adminListDevices().subscribe({ next: (r) => this.devices.set(r.devices), error: (e) => this.onErr(e) });
-    this.api.adminListAdmins().subscribe({ next: (r) => this.admins.set(r.admins), error: (e) => this.onErr(e) });
   }
 
   // ---- presets ----
@@ -355,21 +331,6 @@ export class AdminComponent implements OnInit {
       this.assigning.set(null);
       this.refresh();
     });
-  }
-
-  // ---- admins ----
-
-  addAdmin(): void {
-    this.run(this.api.adminCreateAdmin(this.newAdminUser, this.newAdminPass), () => {
-      this.newAdminUser = '';
-      this.newAdminPass = '';
-      this.refresh();
-    });
-  }
-
-  removeAdmin(name: string): void {
-    if (!confirm(`Delete admin ${name}?`)) return;
-    this.run(this.api.adminDeleteAdmin(name), () => this.refresh());
   }
 
   // ---- helpers ----

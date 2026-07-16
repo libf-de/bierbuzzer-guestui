@@ -47,17 +47,16 @@ export const config = {
   },
 
   db: {
-    accountsPath: optional("DB_ACCOUNTS_PATH", "data/accounts.db"),
     devicesPath: optional("DB_DEVICES_PATH", "data/devices.db"),
     presetsPath: optional("DB_PRESETS_PATH", "data/presets.db"),
-    adminsPath: optional("DB_ADMINS_PATH", "data/admins.db"),
   },
 
-  adminBootstrap: {
-    user: process.env.ADMIN_BOOTSTRAP_USER?.trim() || null,
-    pass: process.env.ADMIN_BOOTSTRAP_PASS?.trim() || null,
-    // account the bootstrap admin is created under
-    accountName: optional("ADMIN_BOOTSTRAP_ACCOUNT", "default"),
+  // External authentication (alleskasse). accountId == apiKey returned here.
+  externalAuth: {
+    loginUrl: optional("AUTH_LOGIN_URL", "https://api.alleskasse.de/auth/login"),
+    checkUrl: optional("AUTH_CHECK_URL", "https://api.alleskasse.de/checkLogin/"),
+    cacheTtlMs: num("AUTH_CACHE_TTL_MS", 60000),
+    timeoutMs: num("AUTH_TIMEOUT_MS", 8000),
   },
 } as const;
 

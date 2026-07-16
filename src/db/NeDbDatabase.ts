@@ -1,56 +1,30 @@
 import path from "path";
 import fs from "fs";
 import Datastore from "nedb-promises";
-import {
-  AccountRecord,
-  Database,
-  DeviceRecord,
-  PresetPatch,
-  PresetRecord,
-} from "./types";
+import { Database, DeviceRecord, PresetPatch, PresetRecord } from "./types";
 
 export interface NeDbPaths {
-  accountsPath: string;
   devicesPath: string;
   presetsPath: string;
 }
 
-/** NeDB-backed Database: one datastore each for accounts, devices, presets. */
+/** NeDB-backed Database: one datastore each for devices, presets. */
 export class NeDbDatabase implements Database {
-  private readonly accounts: Datastore<AccountRecord>;
   private readonly devices: Datastore<DeviceRecord>;
   private readonly presets: Datastore<PresetRecord>;
 
   constructor(paths: NeDbPaths) {
-    for (const p of [paths.accountsPath, paths.devicesPath, paths.presetsPath]) ensureDir(p);
-    this.accounts = Datastore.create({ filename: paths.accountsPath, autoload: false });
+    for (const p of [paths.devicesPath, paths.presetsPath]) ensureDir(p);
     this.devices = Datastore.create({ filename: paths.devicesPath, autoload: false });
     this.presets = Datastore.create({ filename: paths.presetsPath, autoload: false });
   }
 
   async init(): Promise<void> {
-    await this.accounts.load();
     await this.devices.load();
     await this.presets.load();
-    await this.accounts.ensureIndex({ fieldName: "id", unique: true });
     await this.devices.ensureIndex({ fieldName: "topicId", unique: true });
     await this.devices.ensureIndex({ fieldName: "mac", unique: true });
     await this.presets.ensureIndex({ fieldName: "id", unique: true });
-  }
-
-  // --- accounts ---
-
-  async createAccount(rec: AccountRecord): Promise<AccountRecord> {
-    return strip(await this.accounts.insert(rec));
-  }
-
-  async getAccount(id: string): Promise<AccountRecord | null> {
-    const doc = await this.accounts.findOne({ id });
-    return doc ? strip(doc) : null;
-  }
-
-  async countAccounts(): Promise<number> {
-    return this.accounts.count({});
   }
 
   // --- devices ---

@@ -1,33 +1,26 @@
 import path from "path";
 import fs from "fs";
-import { randomUUID } from "crypto";
 import express from "express";
 import helmet from "helmet";
 import { config } from "./config";
 import { NeDbDatabase } from "./db/NeDbDatabase";
-import { NeDbCredentialStore } from "./auth/NeDbCredentialStore";
-import { BasicAuthProvider } from "./auth/BasicAuthProvider";
-import { hashPassword } from "./auth/password";
+import { ExternalAuthProvider } from "./auth/externalAuth";
 import { MqttService } from "./services/MqttService";
 import { MqttProvisioningService } from "./services/MqttProvisioningService";
 import { DeviceService } from "./services/DeviceService";
 import { MockCatalogSource } from "./services/CatalogSource";
 import { guestRoutes } from "./routes/guest";
 import { adminRoutes } from "./routes/admin";
+import { authRoutes } from "./routes/authRoutes";
 import { errorHandler } from "./http/errorHandler";
 
 async function main(): Promise<void> {
   // --- persistence ---
   const db = new NeDbDatabase({
-    accountsPath: config.db.accountsPath,
     devicesPath: config.db.devicesPath,
     presetsPath: config.db.presetsPath,
   });
   await db.init();
-
-  const credentials = new NeDbCredentialStore(config.db.adminsPath);
-  await credentials.init();
-  await seedAccountAndAdmin(db, credentials);
 
   // --- provisioning (dedicated admin dynsec connection) ---
   const provisioning = new MqttProvisioningService({
@@ -55,7 +48,11 @@ async function main(): Promise<void> {
 
   // --- services ---
   const devices = new DeviceService(db, provisioning, mqtt, config.deviceSecret);
-  const auth = new BasicAuthProvider(credentials);
+  const auth = new ExternalAuthProvider({
+    checkUrl: config.externalAuth.checkUrl,
+    cacheTtlMs: config.externalAuth.cacheTtlMs,
+    timeoutMs: config.externalAuth.timeoutMs,
+  });
   const catalog = new MockCatalogSource();
 
   // --- HTTP ---
@@ -66,7 +63,8 @@ async function main(): Promise<void> {
   app.use(express.json({ limit: "16kb" }));
 
   app.get("/healthz", (_req, res) => res.json({ ok: true }));
-  app.use("/api/admin", adminRoutes({ db, devices, auth, credentials, catalog }));
+  app.use("/api/auth", authRoutes(config.externalAuth.loginUrl, config.externalAuth.timeoutMs));
+  app.use("/api/admin", adminRoutes({ db, devices, auth, catalog }));
   app.use("/api", guestRoutes(db, mqtt));
 
   // Serve the built Angular SPA (if present) with a client-side-routing fallback.
@@ -98,34 +96,6 @@ async function main(): Promise<void> {
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
-}
-
-/**
- * Seed a default account + its bootstrap admin when the credential store is
- * empty. Multi-tenant: further accounts/admins are created via the API under
- * the existing admin's account.
- */
-async function seedAccountAndAdmin(
-  db: NeDbDatabase,
-  store: NeDbCredentialStore,
-): Promise<void> {
-  if ((await store.count()) > 0) return;
-  const { user, pass, accountName } = config.adminBootstrap;
-  if (!user || !pass) {
-    console.warn(
-      "[auth] no admins exist and ADMIN_BOOTSTRAP_USER/PASS unset — admin API is unusable",
-    );
-    return;
-  }
-  const accountId = randomUUID();
-  await db.createAccount({ id: accountId, name: accountName, createdAt: Date.now() });
-  await store.create({
-    username: user,
-    passwordHash: await hashPassword(pass),
-    accountId,
-    createdAt: Date.now(),
-  });
-  console.log(`[auth] seeded account "${accountName}" + bootstrap admin "${user}"`);
 }
 
 main().catch((err) => {

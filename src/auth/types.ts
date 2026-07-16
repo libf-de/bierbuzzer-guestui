@@ -1,37 +1,19 @@
 import { Request } from "express";
 
-export interface AdminRecord {
-  username: string;
-  passwordHash: string; // opaque, produced by password.ts
-  accountId: string;
-  createdAt: number;
-}
-
+/** Authenticated admin identity. accountId == the external apiKey. */
 export interface AdminIdentity {
-  username: string;
   accountId: string;
+  /** Human-readable account/customer name from the external checkLogin. */
+  name?: string;
 }
 
 /**
- * Storage for admin credentials. Swap NeDbCredentialStore for another
- * backend by implementing this.
- */
-export interface CredentialStore {
-  init(): Promise<void>;
-  getByUsername(username: string): Promise<AdminRecord | null>;
-  create(rec: AdminRecord): Promise<AdminRecord>;
-  delete(username: string): Promise<boolean>;
-  count(): Promise<number>;
-  listUsernamesByAccount(accountId: string): Promise<string[]>;
-}
-
-/**
- * Pluggable authentication strategy. Returns the authenticated admin, or
- * null if the request carries no / invalid credentials. Swap the impl
- * (Basic, Bearer/JWT, mTLS, ...) without touching routes.
+ * Pluggable authentication strategy. Returns the authenticated admin, or null
+ * if the request carries no / invalid credentials. Swap the impl without
+ * touching routes.
  */
 export interface AuthProvider {
-  /** Human-readable scheme name, used for the WWW-Authenticate challenge. */
+  /** Scheme name for the WWW-Authenticate challenge. */
   readonly scheme: string;
   authenticate(req: Request): Promise<AdminIdentity | null>;
 }
