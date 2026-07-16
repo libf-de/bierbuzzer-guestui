@@ -10,6 +10,10 @@ interface DynsecResponse {
   data?: unknown;
 }
 
+/** dynsec error matchers for idempotent create / delete. */
+const EXISTS = (e: string): boolean => /exists|duplicate/i.test(e);
+const GONE = (e: string): boolean => /not\s*found|does not exist|not exist/i.test(e);
+
 interface MqttProvisioningOptions {
   url: string;
   /** dynsec admin identity (has ACL to the control topic) */
@@ -129,73 +133,68 @@ export class MqttProvisioningService implements Provisioner {
   }
 
   /**
+   * Create a role (with ACLs inline) then a client assigned to that role
+   * (roles inline), each in its own publish. The role is fully committed
+   * before the client references it — avoids the intra-batch "addClientRole:
+   * Internal error" you get when create + assign share one command array.
+   * `tolerateExists` makes it idempotent (re-runs / leftover state).
+   */
+  private async createRoleAndClient(
+    username: string,
+    password: string,
+    role: string,
+    acls: Array<{ acltype: string; topic: string }>,
+    tolerateExists = false,
+  ): Promise<void> {
+    const tolerate = tolerateExists ? EXISTS : undefined;
+
+    const roleRes = await this.send([
+      { command: "createRole", rolename: role, acls: acls.map((a) => ({ ...a, allow: true })) },
+    ]);
+    this.ensureOk(roleRes, tolerate);
+
+    const clientRes = await this.send([
+      { command: "createClient", username, password, roles: [{ rolename: role }] },
+    ]);
+    this.ensureOk(clientRes, tolerate);
+
+    // Ensure the password matches config even if the client pre-existed.
+    if (tolerateExists) {
+      const pwRes = await this.send([{ command: "setClientPassword", username, password }]);
+      this.ensureOk(pwRes, tolerate);
+    }
+  }
+
+  /**
    * Ensure the backend's own least-privilege client + role exist, with the
-   * configured password. Idempotent — safe to run on every startup. ACLs:
-   * publish config/set, subscribe config/ack + status (wildcards).
+   * configured password. Idempotent — safe to run on every startup.
    */
   async ensureServerClient(username: string, password: string): Promise<void> {
-    const role = "server_role";
-    const responses = await this.send([
-      { command: "createClient", username, password },
-      { command: "setClientPassword", username, password },
-      { command: "createRole", rolename: role },
-      {
-        command: "addRoleACL",
-        rolename: role,
-        acltype: "publishClientSend",
-        topic: "devices/+/config/set",
-        allow: true,
-      },
-      {
-        command: "addRoleACL",
-        rolename: role,
-        acltype: "subscribePattern",
-        topic: "devices/+/config/ack",
-        allow: true,
-      },
-      {
-        command: "addRoleACL",
-        rolename: role,
-        acltype: "subscribePattern",
-        topic: "devices/+/status",
-        allow: true,
-      },
-      { command: "addClientRole", username, rolename: role },
-    ]);
-    // Re-runs re-send create/add commands — tolerate "already exists".
-    this.ensureOk(responses, (e) => /exists|duplicate/i.test(e));
+    await this.createRoleAndClient(
+      username,
+      password,
+      "server_role",
+      [
+        { acltype: "publishClientSend", topic: "devices/+/config/set" },
+        { acltype: "subscribePattern", topic: "devices/+/config/ack" },
+        { acltype: "subscribePattern", topic: "devices/+/status" },
+      ],
+      true,
+    );
   }
 
   async createDeviceClient(topicId: string, password: string): Promise<void> {
-    const username = `device_${topicId}`;
-    const role = `role_${topicId}`;
-    const responses = await this.send([
-      { command: "createClient", username, password },
-      { command: "createRole", rolename: role },
-      {
-        command: "addRoleACL",
-        rolename: role,
-        acltype: "subscribePattern",
-        topic: `devices/${topicId}/config/set`,
-        allow: true,
-      },
-      {
-        command: "addRoleACL",
-        rolename: role,
-        acltype: "publishClientSend",
-        topic: `devices/${topicId}/config/ack`,
-        allow: true,
-      },
-      {
-        command: "addRoleACL",
-        rolename: role,
-        acltype: "publishClientSend",
-        topic: `devices/${topicId}/status`,
-        allow: true,
-      },
-      { command: "addClientRole", username, rolename: role },
-    ]);
-    this.ensureOk(responses);
+    await this.createRoleAndClient(
+      `device_${topicId}`,
+      password,
+      `role_${topicId}`,
+      [
+        { acltype: "subscribePattern", topic: `devices/${topicId}/config/set` },
+        { acltype: "publishClientSend", topic: `devices/${topicId}/config/ack` },
+        { acltype: "publishClientSend", topic: `devices/${topicId}/status` },
+      ],
+      true,
+    );
   }
 
   async deleteDeviceClient(topicId: string): Promise<void> {
@@ -206,7 +205,7 @@ export class MqttProvisioningService implements Provisioner {
       { command: "deleteRole", rolename: role },
     ]);
     // Idempotent teardown: ignore "already gone".
-    this.ensureOk(responses, (e) => /not\s*found|does not exist|not exist/i.test(e));
+    this.ensureOk(responses, GONE);
   }
 
   async close(): Promise<void> {
